@@ -88,12 +88,29 @@ func (pl *prolog) Query(ctx context.Context, program string) (Answer, error) {
 
 // Answer is a query result.
 type Answer struct {
-	Query   string
-	Result  string
+	// Query is the original query goal.
+	Query string
+	// Result is a status code.
+	Result Result
+	// Answers are the solutions (substitutions) for a successful query.
 	Answers []Solution
-	Error   any
-	Output  string
+	// Error is the "ball" thrown by throw/1, or nil.
+	Error Term
+	// Output is captured stdout text from this query.
+	Output string
 }
+
+type Result string
+
+// Result values.
+const (
+	// ResultSuccess is for queries that succeed.
+	ResultSuccess Result = "success"
+	// ResultSuccess is for queries that fail (find no answers).
+	ResultFailure Result = "failure"
+	// ResultError is for queries that throw an error.
+	ResultError Result = "error"
+)
 
 func (pl *prolog) ask(ctx context.Context, query string) (string, error) {
 	query = escapeQuery(query)

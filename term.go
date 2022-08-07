@@ -8,8 +8,17 @@ import (
 	"strings"
 )
 
+// Term is a Prolog term.
+// One of the following types:
+//	- string
+//	- int64
+//	- float64
+// 	- Compound
+//	- Variable
 type Term = any
 
+// Solution is a mapping of variable names to substitutions.
+// In other words, it's one answer to a query.
 type Solution map[string]Term
 
 func (sol *Solution) UnmarshalJSON(bs []byte) error {
@@ -46,7 +55,7 @@ func unmarshalTerm(bs []byte) (Term, error) {
 		return x, nil
 	case json.Number:
 		str := string(x)
-		if strings.IndexRune(str, '.') != -1 {
+		if strings.ContainsRune(str, '.') {
 			return strconv.ParseFloat(str, 64)
 		}
 		return strconv.ParseInt(str, 10, 64)
@@ -120,9 +129,34 @@ func unmarshalTerm(bs []byte) (Term, error) {
 	return nil, fmt.Errorf("trealla: unhandled term json: %T %v", iface, iface)
 }
 
+// Compound is a Prolog compound type.
 type Compound struct {
+	// Functor is the principal functor of the compound.
+	// Example: the Functor of foo(bar) is "foo".
 	Functor string
-	Args    []Term
+	// Args are the arguments of the compound.
+	Args []Term
 }
 
+// String returns a Prolog-ish representation of this Compound.
+func (c Compound) String() string {
+	if len(c.Args) == 0 {
+		return c.Functor
+	}
+
+	var buf strings.Builder
+	// TODO: escape
+	buf.WriteString(c.Functor)
+	buf.WriteRune('(')
+	for i, arg := range c.Args {
+		if i > 0 {
+			buf.WriteString(", ")
+		}
+		buf.WriteString(fmt.Sprintf("%v", arg))
+	}
+	buf.WriteRune(')')
+	return buf.String()
+}
+
+// Variable is an unbound Prolog variable.
 type Variable string
