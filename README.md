@@ -1,5 +1,5 @@
-# trealla-go [![GoDoc](https://godoc.org/github.com/guregu/trealla-go/trealla?status.svg)](https://godoc.org/github.com/guregu/trealla-go/trealla)
-`import "github.com/guregu/trealla-go/trealla"`
+# trealla-go [![GoDoc](https://godoc.org/github.com/guregu/trealla-go?status.svg)](https://godoc.org/github.com/guregu/trealla-go)
+`import trealla "github.com/guregu/trealla-go"`
 
 Prolog interface for Go using [Trealla Prolog](https://github.com/trealla-prolog/trealla) and [Wasmer](https://github.com/wasmerio/wasmer-go).
 It's pretty fast. Not as fast as native Trealla, but pretty dang fast (2-5x slower than native).
@@ -25,7 +25,7 @@ import trealla "github.com/guregu/trealla-go"
 func main() {
 	// load the interpreter and (optionally) grant access to the current directory
 	pl := trealla.New(trealla.WithPreopen("."))
-	// run a query; cancel contex to abort it
+	// run a query; cancel context to abort it
 	answer, err := pl.Query(ctx, "member(X, [1, foo(bar), c]).")
 	// get the second substitution (answer) for X
 	x := answer.Solutions[1]["X"] // trealla.Compound{Functor: "foo", Args: ["bar"]}
