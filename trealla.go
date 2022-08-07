@@ -13,6 +13,8 @@ import (
 //go:embed tpl.wasm
 var tplWASM []byte
 
+var wasmEngine = wasmer.NewEngine()
+
 // Prolog is a Prolog interpreter.
 type Prolog interface {
 	// Query executes a query.
@@ -30,7 +32,7 @@ type prolog struct {
 
 // New creates a new Prolog interpreter.
 func New(opts ...Option) (Prolog, error) {
-	pl, err := newEngine()
+	pl, err := newProlog()
 	if err != nil {
 		return nil, err
 	}
@@ -40,15 +42,14 @@ func New(opts ...Option) (Prolog, error) {
 	return pl, nil
 }
 
-func newEngine() (*prolog, error) {
-	engine := wasmer.NewEngine()
-	store := wasmer.NewStore(engine)
+func newProlog() (*prolog, error) {
+	store := wasmer.NewStore(wasmEngine)
 	module, err := wasmer.NewModule(store, tplWASM)
 	if err != nil {
 		return nil, err
 	}
 	return &prolog{
-		engine: engine,
+		engine: wasmEngine,
 		store:  store,
 		module: module,
 	}, nil
@@ -100,6 +101,7 @@ type Answer struct {
 	Output string
 }
 
+// Result is the status of a query answer.
 type Result string
 
 // Result values.
@@ -142,7 +144,8 @@ func (pl *prolog) ask(ctx context.Context, query string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	ch := make(chan error, 1)
+
+	ch := make(chan error, 2)
 	go func() {
 		defer func() {
 			if ex := recover(); ex != nil {
@@ -155,7 +158,7 @@ func (pl *prolog) ask(ctx context.Context, query string) (string, error) {
 
 	select {
 	case <-ctx.Done():
-		return "", fmt.Errorf("trealla: canceled: %x", ctx.Err())
+		return "", fmt.Errorf("trealla: canceled: %w", ctx.Err())
 	case err := <-ch:
 		stdout := string(wasiEnv.ReadStdout())
 		return stdout, err
@@ -171,7 +174,7 @@ func escapeQuery(query string) string {
 type Option func(*prolog)
 
 // WithPreopenDir sets the preopen directory to dir, granting access to it. Calling this again will overwrite it.
-// More or less equivalent to WithMapDir(dir, dir).
+// More or less equivalent to `WithMapDir(dir, dir)`.
 func WithPreopenDir(dir string) Option {
 	return func(pl *prolog) {
 		pl.preopen = dir

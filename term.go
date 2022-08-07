@@ -9,6 +9,7 @@ import (
 )
 
 // Term is a Prolog term.
+//
 // One of the following types:
 //	- string
 //	- int64
@@ -21,6 +22,7 @@ type Term = any
 // In other words, it's one answer to a query.
 type Solution map[string]Term
 
+// UnmarshalJSON implements the encoding/json.Marshaler interface.
 func (sol *Solution) UnmarshalJSON(bs []byte) error {
 	var raws map[string]json.RawMessage
 	dec := json.NewDecoder(bytes.NewReader(bs))
@@ -136,6 +138,12 @@ type Compound struct {
 	Functor string
 	// Args are the arguments of the compound.
 	Args []Term
+}
+
+// Indicator returns the procedure indicator of this compound in Functor/Arity format.
+func (c Compound) Indicator() string {
+	// TODO: escape
+	return fmt.Sprintf("%s/%d", c.Functor, len(c.Args))
 }
 
 // String returns a Prolog-ish representation of this Compound.

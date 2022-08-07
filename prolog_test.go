@@ -70,3 +70,25 @@ func TestQuery(t *testing.T) {
 	}
 
 }
+
+func TestThrow(t *testing.T) {
+	pl, err := New(WithPreopenDir("testdata"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	ans, err := pl.Query(ctx, `throw(ball).`)
+	if err != nil {
+		// TODO: might want to make this an error in the future instead of a status
+		t.Fatal(err)
+	}
+
+	if ans.Result != ResultError {
+		t.Error("unexpected result. want:", ResultError, "got:", ans.Result)
+	}
+
+	if ans.Error != "ball" {
+		t.Error(`unexpected error value. want: "ball" got:`, ans.Error)
+	}
+}

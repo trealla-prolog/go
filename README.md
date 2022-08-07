@@ -36,6 +36,7 @@ func main() {
  
 - Andrew Davison ([@infradig](https://github.com/infradig)) and other contributors to [Trealla Prolog](https://github.com/trealla-prolog/trealla).
 - Jos De Roo ([@josd](https://github.com/josd)) for test cases and encouragement.
+- Aram Panasenco ([@panasenco](https://github.com/panasenco)) for his JSON library.
 
 ## License
 
