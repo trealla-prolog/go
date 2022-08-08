@@ -1,4 +1,4 @@
-module github.com/guregu/trealla-go
+module github.com/trealla-prolog/trealla-go
 
 go 1.18
 

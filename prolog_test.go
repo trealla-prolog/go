@@ -1,37 +1,39 @@
-package trealla
+package trealla_test
 
 import (
 	"context"
 	"reflect"
 	"testing"
+
+	trealla "github.com/trealla-prolog/trealla-go"
 )
 
 func TestQuery(t *testing.T) {
-	pl, err := New(WithPreopenDir("testdata"))
+	pl, err := trealla.New(trealla.WithPreopenDir("testdata"))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	tests := []struct {
 		name string
-		want Answer
+		want trealla.Answer
 	}{
 		{
 			name: "true/0",
-			want: Answer{
+			want: trealla.Answer{
 				Query:   `true.`,
 				Result:  "success",
-				Answers: []Solution{{}},
+				Answers: []trealla.Solution{{}},
 			},
 		},
 		{
 			name: "member/2",
-			want: Answer{
+			want: trealla.Answer{
 				Query:  `member(X, [1,foo(bar),4.2,"baz",'boop']).`,
 				Result: "success",
-				Answers: []Solution{
+				Answers: []trealla.Solution{
 					{"X": int64(1)},
-					{"X": Compound{Functor: "foo", Args: []Term{"bar"}}},
+					{"X": trealla.Compound{Functor: "foo", Args: []trealla.Term{"bar"}}},
 					{"X": 4.2},
 					{"X": "baz"},
 					{"X": "boop"},
@@ -40,17 +42,17 @@ func TestQuery(t *testing.T) {
 		},
 		{
 			name: "false/0",
-			want: Answer{
+			want: trealla.Answer{
 				Query:  `false.`,
 				Result: "failure",
 			},
 		},
 		{
 			name: "tak",
-			want: Answer{
+			want: trealla.Answer{
 				Query:   "consult('testdata/tak'), run",
 				Result:  "success",
-				Answers: []Solution{{}},
+				Answers: []trealla.Solution{{}},
 				Output:  "'<https://josd.github.io/eye/ns#tak>'([34,13,8],13).\n",
 			},
 		},
@@ -72,7 +74,7 @@ func TestQuery(t *testing.T) {
 }
 
 func TestThrow(t *testing.T) {
-	pl, err := New(WithPreopenDir("testdata"))
+	pl, err := trealla.New(trealla.WithPreopenDir("testdata"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,8 +86,8 @@ func TestThrow(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if ans.Result != ResultError {
-		t.Error("unexpected result. want:", ResultError, "got:", ans.Result)
+	if ans.Result != trealla.ResultError {
+		t.Error("unexpected result. want:", trealla.ResultError, "got:", ans.Result)
 	}
 
 	if ans.Error != "ball" {
