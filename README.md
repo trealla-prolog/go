@@ -1,7 +1,5 @@
-# trealla-go [![GoDoc](https://godoc.org/github.com/trealla-prolog/trealla-go?status.svg)](https://godoc.org/github.com/trealla-prolog/trealla-go)
-`import trealla "github.com/trealla-prolog/trealla-go"`
-
-(Note: package import path will change soon.)
+# trealla-go [![GoDoc](https://godoc.org/github.com/trealla-prolog/go/trealla?status.svg)](https://godoc.org/github.com/trealla-prolog/go/trealla)
+`import "github.com/trealla-prolog/go/trealla"`
 
 Prolog interface for Go using [Trealla Prolog](https://github.com/trealla-prolog/trealla) and [Wasmer](https://github.com/wasmerio/wasmer-go).
 It's pretty fast. Not as fast as native Trealla, but pretty dang fast (2-5x slower than native).
@@ -22,7 +20,7 @@ This library uses WebAssembly to run Trealla, executing Prolog queries in an iso
 
 ```go
 
-import trealla "github.com/trealla-prolog/trealla-go"
+import "github.com/trealla-prolog/go/trealla"
 
 func main() {
 	// load the interpreter and (optionally) grant access to the current directory

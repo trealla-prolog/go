@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	trealla "github.com/trealla-prolog/trealla-go"
+	"github.com/trealla-prolog/go/trealla"
 )
 
 func TestQuery(t *testing.T) {
