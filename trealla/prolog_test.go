@@ -29,7 +29,7 @@ func TestQuery(t *testing.T) {
 		{
 			name: "member/2",
 			want: trealla.Answer{
-				Query:  `member(X, [1,foo(bar),4.2,"baz",'boop']).`,
+				Query:  `member(X, [1,foo(bar),4.2,"baz",'boop', [q, '"'], '\\', '\n']).`,
 				Result: "success",
 				Answers: []trealla.Solution{
 					{"X": int64(1)},
@@ -37,6 +37,9 @@ func TestQuery(t *testing.T) {
 					{"X": 4.2},
 					{"X": "baz"},
 					{"X": "boop"},
+					{"X": []trealla.Term{"q", `"`}},
+					{"X": `\`},
+					{"X": "\n"},
 				},
 			},
 		},

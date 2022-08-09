@@ -166,9 +166,11 @@ func (pl *prolog) ask(ctx context.Context, query string) (string, error) {
 }
 
 func escapeQuery(query string) string {
-	query = strings.ReplaceAll(query, `"`, `\"`)
+	query = stringEscaper.Replace(query)
 	return fmt.Sprintf(`use_module(library(wasm_toplevel)), wasm_ask("%s")`, query)
 }
+
+var stringEscaper = strings.NewReplacer(`\`, `\\`, `"`, `\"`)
 
 // Option is an optional parameter for New.
 type Option func(*prolog)
