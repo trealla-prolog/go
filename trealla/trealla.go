@@ -3,9 +3,6 @@ package trealla
 import (
 	"context"
 	_ "embed"
-	"encoding/json"
-	"fmt"
-	"strings"
 
 	"github.com/wasmerio/wasmer-go/wasmer"
 )
@@ -54,123 +51,6 @@ func newProlog() (*prolog, error) {
 		module: module,
 	}, nil
 }
-
-const etx = "\x03" // END OF TEXT
-
-// Query executes a query.
-func (pl *prolog) Query(ctx context.Context, program string) (Answer, error) {
-	raw, err := pl.ask(ctx, program)
-	if err != nil {
-		return Answer{}, err
-	}
-
-	output, js, found := strings.Cut(raw, etx)
-	answer := Answer{
-		Query:  program,
-		Output: output,
-	}
-	if !found {
-		return answer, fmt.Errorf("trealla: unexpected output (missing ETX): %s", raw)
-	}
-
-	dec := json.NewDecoder(strings.NewReader(js))
-	dec.UseNumber()
-	if err := dec.Decode(&answer); err != nil {
-		return answer, fmt.Errorf("trealla: decoding error: %w", err)
-	}
-
-	// var trapErr *wasmer.TrapError
-	// if errors.As(err, &trapErr) {
-	// 	// TODO: handle halt(nonzero)
-	// }
-
-	return answer, nil
-}
-
-// Answer is a query result.
-type Answer struct {
-	// Query is the original query goal.
-	Query string
-	// Result is a status code.
-	Result Result
-	// Answers are the solutions (substitutions) for a successful query.
-	Answers []Solution
-	// Error is the "ball" thrown by throw/1, or nil.
-	Error Term
-	// Output is captured stdout text from this query.
-	Output string
-}
-
-// Result is the status of a query answer.
-type Result string
-
-// Result values.
-const (
-	// ResultSuccess is for queries that succeed.
-	ResultSuccess Result = "success"
-	// ResultSuccess is for queries that fail (find no answers).
-	ResultFailure Result = "failure"
-	// ResultError is for queries that throw an error.
-	ResultError Result = "error"
-)
-
-func (pl *prolog) ask(ctx context.Context, query string) (string, error) {
-	query = escapeQuery(query)
-	builder := wasmer.NewWasiStateBuilder("tpl").
-		Argument("-g").Argument(query).
-		Argument("-q").
-		CaptureStdout()
-	if pl.preopen != "" {
-		builder = builder.PreopenDirectory(pl.preopen)
-	}
-	for alias, dir := range pl.dirs {
-		builder = builder.MapDirectory(alias, dir)
-	}
-	wasiEnv, err := builder.Finalize()
-	if err != nil {
-		return "", err
-	}
-
-	importObject, err := wasiEnv.GenerateImportObject(pl.store, pl.module)
-	if err != nil {
-		return "", err
-	}
-	instance, err := wasmer.NewInstance(pl.module, importObject)
-	if err != nil {
-		return "", err
-	}
-	defer instance.Close()
-	start, err := instance.Exports.GetWasiStartFunction()
-	if err != nil {
-		return "", err
-	}
-
-	ch := make(chan error, 2)
-	go func() {
-		defer func() {
-			if ex := recover(); ex != nil {
-				ch <- fmt.Errorf("trealla: panic: %v", ex)
-			}
-		}()
-		_, err := start()
-		ch <- err
-	}()
-
-	select {
-	case <-ctx.Done():
-		return "", fmt.Errorf("trealla: canceled: %w", ctx.Err())
-	case err := <-ch:
-		stdout := string(wasiEnv.ReadStdout())
-		return stdout, err
-	}
-}
-
-func escapeQuery(query string) string {
-	query = stringEscaper.Replace(query)
-	return fmt.Sprintf(`use_module(library(wasm_toplevel)), wasm_ask("%s")`, query)
-}
-
-var stringEscaper = strings.NewReplacer(`\`, `\\`, `"`, `\"`)
 
 // Option is an optional parameter for New.
 type Option func(*prolog)

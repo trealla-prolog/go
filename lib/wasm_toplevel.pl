@@ -1,72 +1,64 @@
 :- module(wasm_toplevel, [wasm_ask/1]).
 
-:- use_module(library(json)).
 :- use_module(library(lists)).
 :- use_module(library(dcgs)).
+:- use_module(library(json)).
 
 wasm_ask(Input) :-
-	read_term_from_chars(Input, Query, [variable_names(Vars)]),
-	query(Query, Vars, Event, Solutions, _),
-	% output_string(Output0, Output),
-	write_result(Event, Solutions, _),
+	catch(
+		read_term_from_chars(Input, Query, [variable_names(Vars)]),
+		Error,
+		(
+			write('\x3\'),
+			write_result(error, Error),
+			flush_output,
+			halt
+		)
+	),
+	query(Query, Vars, Status, Solutions),
+	write_result(Status, Solutions),
 	flush_output,
 	halt.
 
-write_result(success, Solutions0, _) :-
+write_result(success, Solutions0) :-
 	maplist(solution_json, Solutions0, Solutions),
 	once(phrase(json_chars(pairs([
 		string("result")-string("success"),
 		string("answers")-list(Solutions)
-		% string("output")-string(Output)
 	])), JSON)),
 	format("~s~n", [JSON]).
 
-write_result(failure, _, _) :-
+write_result(failure, _) :-
 	once(phrase(json_chars(pairs([
 		string("result")-string("failure")
-		% string("output")-string(Output)
 	])), JSON)),
 	format("~s~n", [JSON]).
 
-write_result(error, Error0, _) :-
+write_result(error, Error0) :-
 	term_json(Error0, Error),
 	once(phrase(json_chars(pairs([
 		string("result")-string("error"),
 		string("error")-Error
-		% string("output")-string(Output)
 	])), JSON)),
 	format("~s~n", [JSON]).
 
-query(Query, Vars, Event, Solutions, Output) :-
-	% StdoutFile = tmp,
+query(Query, Vars, Status, Solutions) :-
 	( setup_call_cleanup(
-		(	
-			%open(StdoutFile, write, Stream),
-			%set_output(Stream)
-			%format("+++BEGIN STDOUT+++~n", [])
-			true
-		),
+		true,
 		catch(bagof(Vars, call(Query), Solutions), Error, true),
-		(
-			%close(StdoutFile),
-			%set_output(stdout)
-			write('\x3\') % END OF TEXT
-		)
+		write('\x3\') % END OF TEXT
 	) -> OK = true
 	  ;  OK = false
 	),  
-	query_event(OK, Error, Event),
-	% read_file_to_string(StdoutFile, Output0, []),
-	% output_string(Output0, Output),
-	Output = "",
+	query_status(OK, Error, Status),
 	(  nonvar(Error)
 	-> Solutions = Error
 	;  true
 	).
 
-query_event(_OK, Error, error) :- nonvar(Error), !.
-query_event(true, _, success).
-query_event(false, _, failure).
+query_status(_OK, Error, error) :- nonvar(Error), !.
+query_status(true, _, success).
+query_status(false, _, failure).
 
 solution_json(Vars0, pairs(Vars)) :- maplist(var_json, Vars0, Vars).
 
@@ -98,6 +90,3 @@ term_json(Value, pairs([string("var")-string("_")])) :-
 	var(Value),
 	!.
 
-output_string(X, X) :- string(X), !.
-output_string('', "") :- !.
-output_string([], "") :- !.
