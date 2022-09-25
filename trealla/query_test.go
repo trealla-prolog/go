@@ -3,6 +3,7 @@ package trealla_test
 import (
 	"context"
 	"errors"
+	"os"
 	"reflect"
 	"testing"
 
@@ -10,7 +11,12 @@ import (
 )
 
 func TestQuery(t *testing.T) {
-	pl, err := trealla.New(trealla.WithMapDir("testdata", "./testdata"))
+	testdata := "./testdata"
+	if _, err := os.Stat(testdata); os.IsNotExist(err) {
+		testdata = "./trealla/testdata"
+	}
+
+	pl, err := trealla.New(trealla.WithMapDir("testdata", testdata), trealla.WithLibraryPath("/testdata"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,9 +88,9 @@ func TestQuery(t *testing.T) {
 			err: trealla.ErrFailure,
 		},
 		{
-			name: "tak",
+			name: "tak & WithLibraryPath",
 			want: trealla.Answer{
-				Query:   "consult('/testdata/tak'), run",
+				Query:   "use_module(library(tak)), run",
 				Answers: []trealla.Solution{{}},
 				Output:  "'<https://josd.github.io/eye/ns#tak>'([34,13,8],13).\n",
 			},

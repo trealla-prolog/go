@@ -40,6 +40,7 @@ type prolog struct {
 
 	preopen string
 	dirs    map[string]string
+	library string
 
 	mu *sync.Mutex
 }
@@ -78,6 +79,9 @@ func (pl *prolog) init() error {
 		Argument("-q").
 		Argument("--ns").
 		CaptureStdout()
+	if pl.library != "" {
+		builder = builder.Argument("--library").Argument(pl.library)
+	}
 	if pl.preopen != "" {
 		builder = builder.PreopenDirectory(pl.preopen)
 	}
@@ -191,5 +195,11 @@ func WithMapDir(alias, dir string) Option {
 			pl.dirs = make(map[string]string)
 		}
 		pl.dirs[alias] = dir
+	}
+}
+
+func WithLibraryPath(path string) Option {
+	return func(pl *prolog) {
+		pl.library = path
 	}
 }
