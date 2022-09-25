@@ -10,7 +10,7 @@ import (
 )
 
 func TestQuery(t *testing.T) {
-	pl, err := trealla.New(trealla.WithPreopenDir("testdata"))
+	pl, err := trealla.New(trealla.WithMapDir("testdata", "./testdata"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestQuery(t *testing.T) {
 		{
 			name: "tak",
 			want: trealla.Answer{
-				Query:   "consult('testdata/tak'), run",
+				Query:   "consult('/testdata/tak'), run",
 				Answers: []trealla.Solution{{}},
 				Output:  "'<https://josd.github.io/eye/ns#tak>'([34,13,8],13).\n",
 			},

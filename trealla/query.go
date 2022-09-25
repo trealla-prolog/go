@@ -5,11 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-
-	"github.com/wasmerio/wasmer-go/wasmer"
 )
 
-const etx = "\x03" // END OF TEXT
+const stx = '\x02' // START OF TEXT
+const etx = '\x03' // END OF TEXT
 
 // Query executes a query.
 func (pl *prolog) Query(ctx context.Context, program string) (Answer, error) {
@@ -18,18 +17,32 @@ func (pl *prolog) Query(ctx context.Context, program string) (Answer, error) {
 		return Answer{}, err
 	}
 
-	output, js, found := strings.Cut(raw, etx)
+	if idx := strings.IndexRune(raw, stx); idx >= 0 {
+		raw = raw[idx+1:]
+	} else {
+		return Answer{}, fmt.Errorf("trealla: unexpected output (missing STX): %s", raw)
+	}
+
+	var output string
+	if idx := strings.IndexRune(raw, etx); idx >= 0 {
+		output = raw[:idx]
+		raw = raw[idx+1:]
+	} else {
+		return Answer{}, fmt.Errorf("trealla: unexpected output (missing ETX): %s", raw)
+	}
+
+	if idx := strings.IndexRune(raw, stx); idx >= 0 {
+		raw = raw[:idx]
+	}
+
 	resp := response{
 		Answer: Answer{
 			Query:  program,
 			Output: output,
 		},
 	}
-	if !found {
-		return resp.Answer, fmt.Errorf("trealla: unexpected output (missing ETX): %s", raw)
-	}
 
-	dec := json.NewDecoder(strings.NewReader(js))
+	dec := json.NewDecoder(strings.NewReader(raw))
 	dec.UseNumber()
 	if err := dec.Decode(&resp); err != nil {
 		return resp.Answer, fmt.Errorf("trealla: decoding error: %w", err)
@@ -82,31 +95,13 @@ const (
 
 func (pl *prolog) ask(ctx context.Context, query string) (string, error) {
 	query = escapeQuery(query)
-	builder := wasmer.NewWasiStateBuilder("tpl").
-		Argument("-g").Argument(query).
-		Argument("-q").
-		CaptureStdout()
-	if pl.preopen != "" {
-		builder = builder.PreopenDirectory(pl.preopen)
-	}
-	for alias, dir := range pl.dirs {
-		builder = builder.MapDirectory(alias, dir)
-	}
-	wasiEnv, err := builder.Finalize()
+	qstr, err := newCString(pl, query)
 	if err != nil {
 		return "", err
 	}
+	defer qstr.free(pl)
 
-	importObject, err := wasiEnv.GenerateImportObject(pl.store, pl.module)
-	if err != nil {
-		return "", err
-	}
-	instance, err := wasmer.NewInstance(pl.module, importObject)
-	if err != nil {
-		return "", err
-	}
-	defer instance.Close()
-	start, err := instance.Exports.GetWasiStartFunction()
+	pl_eval, err := pl.instance.Exports.GetFunction("pl_eval")
 	if err != nil {
 		return "", err
 	}
@@ -118,7 +113,7 @@ func (pl *prolog) ask(ctx context.Context, query string) (string, error) {
 				ch <- fmt.Errorf("trealla: panic: %v", ex)
 			}
 		}()
-		_, err := start()
+		_, err := pl_eval(pl.ptr, qstr.ptr)
 		ch <- err
 	}()
 
@@ -126,14 +121,56 @@ func (pl *prolog) ask(ctx context.Context, query string) (string, error) {
 	case <-ctx.Done():
 		return "", fmt.Errorf("trealla: canceled: %w", ctx.Err())
 	case err := <-ch:
-		stdout := string(wasiEnv.ReadStdout())
+		stdout := string(pl.wasi.ReadStdout())
 		return stdout, err
 	}
 }
 
+type cstring struct {
+	ptr  int32
+	size int
+}
+
+func newCString(pl *prolog, str string) (*cstring, error) {
+	cstr := &cstring{
+		size: len(str) + 1,
+	}
+	size := len(str) + 1
+	ptrv, err := pl.realloc(0, 0, 0, size)
+	if err != nil {
+		return nil, err
+	}
+	cstr.ptr = ptrv.(int32)
+	err = cstr.set(pl, str)
+	return cstr, err
+}
+
+func (cstr *cstring) set(pl *prolog, str string) error {
+	data := pl.memory.Data()
+
+	ptr := int(cstr.ptr)
+	for i, b := range []byte(str) {
+		data[ptr+i] = b
+	}
+	data[ptr+len(str)] = 0
+
+	return nil
+}
+
+func (str *cstring) free(pl *prolog) error {
+	if str.ptr == 0 {
+		return nil
+	}
+
+	_, err := pl.free(str.ptr, str.size, 0)
+	str.ptr = 0
+	str.size = 0
+	return err
+}
+
 func escapeQuery(query string) string {
 	query = stringEscaper.Replace(query)
-	return fmt.Sprintf(`use_module(library(wasm_toplevel)), wasm_ask("%s")`, query)
+	return fmt.Sprintf(`use_module(library(js_toplevel)), js_ask("%s")`, query)
 }
 
 var stringEscaper = strings.NewReplacer(`\`, `\\`, `"`, `\"`)
