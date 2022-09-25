@@ -10,10 +10,16 @@ import (
 )
 
 func TestQuery(t *testing.T) {
-	pl, err := trealla.New(trealla.WithPreopenDir("testdata"))
+	pl, err := trealla.New(trealla.WithMapDir("testdata", "./testdata"))
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	t.Run("consult", func(t *testing.T) {
+		if err := pl.Consult(context.Background(), "/testdata/greeting"); err != nil {
+			t.Error(err)
+		}
+	})
 
 	tests := []struct {
 		name string
@@ -25,6 +31,31 @@ func TestQuery(t *testing.T) {
 			want: trealla.Answer{
 				Query:   `true.`,
 				Answers: []trealla.Solution{{}},
+			},
+		},
+		{
+			name: "consulted",
+			want: trealla.Answer{
+				Query: `hello(X)`,
+				Answers: []trealla.Solution{
+					{"X": "world"},
+					{"X": "Welt"},
+					{"X": "世界"},
+				},
+			},
+		},
+		{
+			name: "assertz/1",
+			want: trealla.Answer{
+				Query:   `assertz(こんにちは(世界)).`,
+				Answers: []trealla.Solution{{}},
+			},
+		},
+		{
+			name: "assertz/1 (did it persist?)",
+			want: trealla.Answer{
+				Query:   `こんにちは(X).`,
+				Answers: []trealla.Solution{{"X": "世界"}},
 			},
 		},
 		{
@@ -53,7 +84,7 @@ func TestQuery(t *testing.T) {
 		{
 			name: "tak",
 			want: trealla.Answer{
-				Query:   "consult('testdata/tak'), run",
+				Query:   "consult('/testdata/tak'), run",
 				Answers: []trealla.Solution{{}},
 				Output:  "'<https://josd.github.io/eye/ns#tak>'([34,13,8],13).\n",
 			},
