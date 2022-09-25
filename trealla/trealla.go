@@ -198,6 +198,9 @@ func WithMapDir(alias, dir string) Option {
 	}
 }
 
+// WithLibraryPath sets the global library path for the interpreter.
+// `use_module(library(foo))` will point to here.
+// Equivalent to Trealla's `--library` flag.
 func WithLibraryPath(path string) Option {
 	return func(pl *prolog) {
 		pl.library = path
