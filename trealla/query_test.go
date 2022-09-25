@@ -28,6 +28,20 @@ func TestQuery(t *testing.T) {
 			},
 		},
 		{
+			name: "assertz/1",
+			want: trealla.Answer{
+				Query:   `assertz(hello(world)).`,
+				Answers: []trealla.Solution{{}},
+			},
+		},
+		{
+			name: "assertz/1 (did it persist?)",
+			want: trealla.Answer{
+				Query:   `hello(X).`,
+				Answers: []trealla.Solution{{"X": "world"}},
+			},
+		},
+		{
 			name: "member/2",
 			want: trealla.Answer{
 				Query: `member(X, [1,foo(bar),4.2,"baz",'boop', [q, '"'], '\\', '\n']).`,

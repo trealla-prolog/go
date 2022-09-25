@@ -12,7 +12,7 @@ It's pretty fast. Not as fast as native Trealla, but pretty dang fast (2-5x slow
 - Queries are findall'd and won't return answers until they terminate.
 - Doesn't work on Windows ([wasmer-go issue](https://github.com/wasmerio/wasmer-go/issues/69)).
 	- Works great on WSL.
-- Currently interpreters are ephemeral, so you have to reconsult everything each query (working on this).
+- ~~Currently interpreters are ephemeral, so you have to reconsult everything each query (working on this)~~.
 
 ## Usage
 
