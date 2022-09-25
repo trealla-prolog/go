@@ -15,6 +15,12 @@ func TestQuery(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	t.Run("consult", func(t *testing.T) {
+		if err := pl.Consult(context.Background(), "/testdata/greeting"); err != nil {
+			t.Error(err)
+		}
+	})
+
 	tests := []struct {
 		name string
 		want trealla.Answer
@@ -28,17 +34,28 @@ func TestQuery(t *testing.T) {
 			},
 		},
 		{
+			name: "consulted",
+			want: trealla.Answer{
+				Query: `hello(X)`,
+				Answers: []trealla.Solution{
+					{"X": "world"},
+					{"X": "Welt"},
+					{"X": "世界"},
+				},
+			},
+		},
+		{
 			name: "assertz/1",
 			want: trealla.Answer{
-				Query:   `assertz(hello(world)).`,
+				Query:   `assertz(こんにちは(世界)).`,
 				Answers: []trealla.Solution{{}},
 			},
 		},
 		{
 			name: "assertz/1 (did it persist?)",
 			want: trealla.Answer{
-				Query:   `hello(X).`,
-				Answers: []trealla.Solution{{"X": "world"}},
+				Query:   `こんにちは(X).`,
+				Answers: []trealla.Solution{{"X": "世界"}},
 			},
 		},
 		{

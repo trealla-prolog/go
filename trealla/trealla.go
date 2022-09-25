@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"sync"
 
 	"github.com/wasmerio/wasmer-go/wasmer"
 )
@@ -17,6 +18,8 @@ var wasmEngine = wasmer.NewEngine()
 type Prolog interface {
 	// Query executes a query.
 	Query(ctx context.Context, query string) (Answer, error)
+	// Consult loads a Prolog file with the given path.
+	Consult(ctx context.Context, filename string) error
 }
 
 type wasmFunc func(...any) (any, error)
@@ -37,6 +40,8 @@ type prolog struct {
 
 	preopen string
 	dirs    map[string]string
+
+	mu *sync.Mutex
 }
 
 // New creates a new Prolog interpreter.
@@ -58,6 +63,7 @@ func newProlog(opts ...Option) (*prolog, error) {
 		engine: wasmEngine,
 		store:  store,
 		module: module,
+		mu:     new(sync.Mutex),
 	}
 	for _, opt := range opts {
 		opt(pl)
@@ -143,6 +149,26 @@ func (pl *prolog) init() error {
 	}
 	pl.pl_consult = pl_consult
 
+	return nil
+}
+
+func (pl *prolog) Consult(_ context.Context, filename string) error {
+	pl.mu.Lock()
+	defer pl.mu.Unlock()
+
+	fstr, err := newCString(pl, filename)
+	if err != nil {
+		return err
+	}
+	defer fstr.free(pl)
+
+	ret, err := pl.pl_consult(pl.ptr, fstr.ptr)
+	if err != nil {
+		return err
+	}
+	if ret.(int32) == 0 {
+		return fmt.Errorf("trealla: failed to consult file: %s", filename)
+	}
 	return nil
 }
 

@@ -12,6 +12,9 @@ const etx = '\x03' // END OF TEXT
 
 // Query executes a query.
 func (pl *prolog) Query(ctx context.Context, program string) (Answer, error) {
+	pl.mu.Lock()
+	defer pl.mu.Unlock()
+
 	raw, err := pl.ask(ctx, program)
 	if err != nil {
 		return Answer{}, err
