@@ -4,15 +4,13 @@
 Prolog interface for Go using [Trealla Prolog](https://github.com/trealla-prolog/trealla) and [Wasmer](https://github.com/wasmerio/wasmer-go).
 It's pretty fast. Not as fast as native Trealla, but pretty dang fast (2-5x slower than native).
 
-**Development Status**: alpha 🤠
+**Development Status**: beta 🤠
 
 ### Caveats
 
-- Alpha status, API will change.
-- ~~Queries are findall'd and won't return answers until they terminate.~~
+- Beta status, API will probably change.
 - Doesn't work on Windows ([wasmer-go issue](https://github.com/wasmerio/wasmer-go/issues/69)).
 	- Works great on WSL.
-- ~~Currently interpreters are ephemeral, so you have to reconsult everything each query (working on this)~~.
 
 ## Usage
 
@@ -40,6 +38,11 @@ func main() {
 }
 ```
 
+## WASM Binary
+
+This library embeds the Trealla WebAssembly binary in itself, so you can use it without any external dependencies.
+The binaries are currently sourced from [guregu/trealla](https://github.com/guregu/trealla), also [available from WAPM](https://wapm.io/guregu/trealla).
+
 ## Thanks
  
 - Andrew Davison ([@infradig](https://github.com/infradig)) and other contributors to [Trealla Prolog](https://github.com/trealla-prolog/trealla).
@@ -52,5 +55,6 @@ MIT. See ATTRIBUTION as well.
 
 ## See also
 
+- [trealla-js](https://wapm.io/guregu/trealla-js) is Trealla for Javascript.
 - [ichiban/prolog](https://github.com/ichiban/prolog) is a pure Go Prolog.
 - [guregu/pengine](https://github.com/guregu/pengine) is a Pengines (SWI-Prolog) library for Go.
