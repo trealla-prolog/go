@@ -3,6 +3,7 @@ package trealla_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"reflect"
 	"testing"
@@ -29,70 +30,106 @@ func TestQuery(t *testing.T) {
 
 	tests := []struct {
 		name string
-		want trealla.Answer
+		want []trealla.Answer
 		err  error
 	}{
 		{
 			name: "true/0",
-			want: trealla.Answer{
-				Query:   `true.`,
-				Answers: []trealla.Solution{{}},
+			want: []trealla.Answer{
+				{
+					Query:    `true.`,
+					Solution: trealla.Solution{},
+				},
 			},
 		},
 		{
 			name: "consulted",
-			want: trealla.Answer{
-				Query: `hello(X)`,
-				Answers: []trealla.Solution{
-					{"X": "world"},
-					{"X": "Welt"},
-					{"X": "世界"},
+			want: []trealla.Answer{
+				{
+					Query: `hello(X)`,
+					Solution: trealla.Solution{
+						"X": "world",
+					},
+				},
+				{
+					Query: `hello(X)`,
+					Solution: trealla.Solution{
+						"X": "Welt",
+					},
+				},
+				{
+					Query: `hello(X)`,
+					Solution: trealla.Solution{
+						"X": "世界",
+					},
 				},
 			},
 		},
 		{
 			name: "assertz/1",
-			want: trealla.Answer{
-				Query:   `assertz(こんにちは(世界)).`,
-				Answers: []trealla.Solution{{}},
-			},
-		},
-		{
-			name: "assertz/1 (did it persist?)",
-			want: trealla.Answer{
-				Query:   `こんにちは(X).`,
-				Answers: []trealla.Solution{{"X": "世界"}},
-			},
-		},
-		{
-			name: "member/2",
-			want: trealla.Answer{
-				Query: `member(X, [1,foo(bar),4.2,"baz",'boop', [q, '"'], '\\', '\n']).`,
-				Answers: []trealla.Solution{
-					{"X": int64(1)},
-					{"X": trealla.Compound{Functor: "foo", Args: []trealla.Term{"bar"}}},
-					{"X": 4.2},
-					{"X": "baz"},
-					{"X": "boop"},
-					{"X": []trealla.Term{"q", `"`}},
-					{"X": `\`},
-					{"X": "\n"},
+			want: []trealla.Answer{
+				{
+					Query:    `assertz(こんにちは(世界)).`,
+					Solution: trealla.Solution{},
 				},
 			},
 		},
 		{
+			name: "assertz/1 (did it persist?)",
+			want: []trealla.Answer{
+				{
+					Query:    `こんにちは(X).`,
+					Solution: trealla.Solution{"X": "世界"},
+				},
+			},
+		},
+		{
+			name: "member/2",
+			want: []trealla.Answer{
+				{
+					Query:    `member(X, [1,foo(bar),4.2,"baz",'boop', [q, '"'], '\\', '\n']).`,
+					Solution: trealla.Solution{"X": int64(1)},
+				},
+				{
+					Query:    `member(X, [1,foo(bar),4.2,"baz",'boop', [q, '"'], '\\', '\n']).`,
+					Solution: trealla.Solution{"X": trealla.Compound{Functor: "foo", Args: []trealla.Term{"bar"}}}},
+				{
+					Query:    `member(X, [1,foo(bar),4.2,"baz",'boop', [q, '"'], '\\', '\n']).`,
+					Solution: trealla.Solution{"X": 4.2}},
+				{
+					Query:    `member(X, [1,foo(bar),4.2,"baz",'boop', [q, '"'], '\\', '\n']).`,
+					Solution: trealla.Solution{"X": "baz"}},
+				{
+					Query:    `member(X, [1,foo(bar),4.2,"baz",'boop', [q, '"'], '\\', '\n']).`,
+					Solution: trealla.Solution{"X": "boop"}},
+				{
+					Query:    `member(X, [1,foo(bar),4.2,"baz",'boop', [q, '"'], '\\', '\n']).`,
+					Solution: trealla.Solution{"X": []trealla.Term{"q", `"`}}},
+				{
+					Query:    `member(X, [1,foo(bar),4.2,"baz",'boop', [q, '"'], '\\', '\n']).`,
+					Solution: trealla.Solution{"X": `\`}},
+				{
+					Query:    `member(X, [1,foo(bar),4.2,"baz",'boop', [q, '"'], '\\', '\n']).`,
+					Solution: trealla.Solution{"X": "\n"}},
+			},
+		},
+		{
 			name: "false/0",
-			want: trealla.Answer{
-				Query: `false.`,
+			want: []trealla.Answer{
+				{
+					Query: `false.`,
+				},
 			},
 			err: trealla.ErrFailure,
 		},
 		{
 			name: "tak & WithLibraryPath",
-			want: trealla.Answer{
-				Query:   "use_module(library(tak)), run",
-				Answers: []trealla.Solution{{}},
-				Output:  "'<https://josd.github.io/eye/ns#tak>'([34,13,8],13).\n",
+			want: []trealla.Answer{
+				{
+					Query:    "use_module(library(tak)), run",
+					Solution: trealla.Solution{},
+					Output:   "'<https://josd.github.io/eye/ns#tak>'([34,13,8],13).\n",
+				},
 			},
 		},
 	}
@@ -100,13 +137,19 @@ func TestQuery(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
-			ans, err := pl.Query(ctx, tc.want.Query)
+			q := pl.Query(ctx, tc.want[0].Query)
+			var ans []trealla.Answer
+			for q.Next(ctx) {
+				ans = append(ans, q.Current())
+			}
+			err := q.Err()
 			if tc.err == nil && err != nil {
 				t.Fatal(err)
 			} else if tc.err != nil && !errors.Is(err, tc.err) {
 				t.Error("unexpected error:", err)
 			}
-			if !reflect.DeepEqual(ans, tc.want) {
+			if tc.err == nil && !reflect.DeepEqual(ans, tc.want) {
+				// TODO
 				t.Errorf("bad answer. want: %#v got: %#v", tc.want, ans)
 			}
 		})
@@ -121,7 +164,11 @@ func TestThrow(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	_, err = pl.Query(ctx, `throw(ball).`)
+	q := pl.Query(ctx, `throw(ball).`)
+	if q.Next(ctx) {
+		t.Error("unexpected result", q.Current())
+	}
+	err = q.Err()
 
 	var ex trealla.ErrThrow
 	if !errors.As(err, &ex) {
@@ -140,7 +187,11 @@ func TestSyntaxError(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	_, err = pl.Query(ctx, `hello(`)
+	q := pl.Query(ctx, `hello(`)
+	if q.Next(ctx) {
+		t.Error("unexpected result", q.Current())
+	}
+	err = q.Err()
 
 	var ex trealla.ErrThrow
 	if !errors.As(err, &ex) {
@@ -160,4 +211,32 @@ func TestSyntaxError(t *testing.T) {
 	if !reflect.DeepEqual(ex.Ball, want) {
 		t.Error(`unexpected error value. want:`, want, `got:`, ex.Ball)
 	}
+}
+
+func Example() {
+	ctx := context.Background()
+
+	// create a new Prolog interpreter
+	pl, err := trealla.New()
+	if err != nil {
+		panic(err)
+	}
+
+	// start a new query
+	query := pl.Query(ctx, "member(X, [1, foo(bar), c]).")
+
+	// iterate through answers
+	for query.Next(ctx) {
+		answer := query.Current()
+		x := answer.Solution["X"]
+		fmt.Println(x)
+	}
+
+	// make sure to check the query for errors
+	if err := query.Err(); err != nil {
+		panic(err)
+	}
+	// Output: 1
+	// foo(bar)
+	// c
 }

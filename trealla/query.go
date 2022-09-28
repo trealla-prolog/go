@@ -1,179 +1,243 @@
 package trealla
 
 import (
+	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/binary"
+	"errors"
 	"fmt"
+	"runtime"
 	"strings"
+	"sync"
 )
 
 const stx = '\x02' // START OF TEXT
 const etx = '\x03' // END OF TEXT
 
-// Query executes a query.
-func (pl *prolog) Query(ctx context.Context, program string) (Answer, error) {
-	pl.mu.Lock()
-	defer pl.mu.Unlock()
-
-	raw, err := pl.ask(ctx, program)
-	if err != nil {
-		return Answer{}, err
-	}
-
-	if idx := strings.IndexRune(raw, stx); idx >= 0 {
-		raw = raw[idx+1:]
-	} else {
-		return Answer{}, fmt.Errorf("trealla: unexpected output (missing STX): %s", raw)
-	}
-
-	var output string
-	if idx := strings.IndexRune(raw, etx); idx >= 0 {
-		output = raw[:idx]
-		raw = raw[idx+1:]
-	} else {
-		return Answer{}, fmt.Errorf("trealla: unexpected output (missing ETX): %s", raw)
-	}
-
-	if idx := strings.IndexRune(raw, stx); idx >= 0 {
-		raw = raw[:idx]
-	}
-
-	resp := response{
-		Answer: Answer{
-			Query:  program,
-			Output: output,
-		},
-	}
-
-	dec := json.NewDecoder(strings.NewReader(raw))
-	dec.UseNumber()
-	if err := dec.Decode(&resp); err != nil {
-		return resp.Answer, fmt.Errorf("trealla: decoding error: %w", err)
-	}
-
-	switch resp.Result {
-	case statusSuccess:
-		return resp.Answer, nil
-	case statusFailure:
-		return resp.Answer, ErrFailure
-	case statusError:
-		ball, err := unmarshalTerm(resp.Error)
-		if err != nil {
-			return resp.Answer, err
-		}
-		return resp.Answer, ErrThrow{Ball: ball}
-	default:
-		return resp.Answer, fmt.Errorf("trealla: unexpected query status: %v", resp.Result)
-	}
+// Query executes a query, returning an iterator for results.
+func (pl *prolog) Query(ctx context.Context, goal string) Query {
+	q := pl.start(ctx, goal)
+	runtime.SetFinalizer(q, finalize)
+	return q
 }
 
-// Answer is a query result.
-type Answer struct {
-	// Query is the original query goal.
-	Query string
-	// Answers are the solutions (substitutions) for a successful query.
-	Answers []Solution
-	// Output is captured stdout text from this query.
-	Output string
+func finalize(q *query) {
+	q.Close()
 }
 
-type response struct {
-	Answer
-	Result queryStatus
-	Error  json.RawMessage // ball
+// QueryAnswer executes a query and returns a single result.
+func (pl *prolog) QueryAnswer(ctx context.Context, goal string) (Answer, error) {
+	q := pl.Query(ctx, goal)
+	defer q.Close()
+	if q.Next(ctx) {
+		return q.Current(), nil
+	}
+	return Answer{}, q.Err()
 }
 
-// queryStatus is the status of a query answer.
-type queryStatus string
+// Query is a Prolog query iterator.
+type Query interface {
+	// Next computes the next solution. Returns true if it found one and false if there are no more results.
+	Next(context.Context) bool
+	// Current returns the current solution prepared by Next.
+	Current() Answer
+	// Close destroys this query. It is not necessary to call this if you exhaust results via Next.
+	Close() error
+	// Err returns this query's error. Always check this after iterating.
+	Err() error
+}
 
-// Result values.
-const (
-	// statusSuccess is for queries that succeed.
-	statusSuccess queryStatus = "success"
-	// statusFailure is for queries that fail (find no answers).
-	statusFailure queryStatus = "failure"
-	// statusError is for queries that throw an error.
-	statusError queryStatus = "error"
-)
+type query struct {
+	pl       *prolog
+	goal     string
+	subquery int32
 
-func (pl *prolog) ask(ctx context.Context, query string) (string, error) {
-	query = escapeQuery(query)
-	qstr, err := newCString(pl, query)
-	if err != nil {
-		return "", err
+	queue []Answer
+	cur   Answer
+	err   error
+	done  bool
+
+	mu *sync.Mutex
+}
+
+func (q *query) push(a Answer) {
+	q.queue = append(q.queue, a)
+}
+
+func (q *query) pop() bool {
+	if len(q.queue) == 0 {
+		return false
 	}
-	defer qstr.free(pl)
+	q.cur = q.queue[0]
+	q.queue = q.queue[1:]
+	return true
+}
 
-	pl_eval, err := pl.instance.Exports.GetFunction("pl_eval")
-	if err != nil {
-		return "", err
+func (q *query) Next(ctx context.Context) bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	if q.err != nil {
+		return false
 	}
+
+	if q.pop() {
+		return true
+	}
+
+	if q.done {
+		return false
+	}
+
+	if q.redo(ctx) {
+		return q.pop()
+	}
+
+	return false
+}
+
+func (pl *prolog) start(ctx context.Context, goal string) *query {
+	q := &query{
+		pl:   pl,
+		goal: goal,
+		mu:   new(sync.Mutex),
+	}
+
+	goalstr, err := newCString(pl, escapeQuery(goal))
+	if err != nil {
+		q.setError(err)
+		return q
+	}
+	defer goalstr.free(pl)
+
+	subqptrv, err := pl.realloc(0, 0, 0, 4)
+	if err != nil {
+		q.setError(err)
+		return q
+	}
+	subqptr := subqptrv.(int32)
+	defer pl.free(subqptr, 4, 1)
 
 	ch := make(chan error, 2)
+	var ret int32
 	go func() {
 		defer func() {
 			if ex := recover(); ex != nil {
 				ch <- fmt.Errorf("trealla: panic: %v", ex)
 			}
 		}()
-		_, err := pl_eval(pl.ptr, qstr.ptr)
+		v, err := pl.pl_query(pl.ptr, goalstr.ptr, subqptr)
+		ret = v.(int32)
 		ch <- err
 	}()
 
 	select {
 	case <-ctx.Done():
-		return "", fmt.Errorf("trealla: canceled: %w", ctx.Err())
+		q.Close()
+		q.setError(fmt.Errorf("trealla: canceled: %w", ctx.Err()))
+		return q
+
 	case err := <-ch:
+		q.done = ret == 0
+		if err != nil {
+			q.setError(err)
+			return q
+		}
+
+		// grab subquery pointer
+		buf := bytes.NewBuffer(pl.memory.Data()[subqptr : subqptr+4])
+		if err := binary.Read(buf, binary.LittleEndian, &q.subquery); err != nil {
+			q.setError(fmt.Errorf("trealla: couldn't read subquery pointer"))
+			return q
+		}
+
 		stdout := string(pl.wasi.ReadStdout())
-		return stdout, err
+		ans, err := newAnswer(goal, stdout)
+		if err == nil {
+			q.push(ans)
+		} else {
+			q.setError(err)
+		}
+		return q
 	}
 }
 
-type cstring struct {
-	ptr  int32
-	size int
+func (q *query) redo(ctx context.Context) bool {
+	pl := q.pl
+	ch := make(chan error, 2)
+	var ret int32
+	go func() {
+		defer func() {
+			if ex := recover(); ex != nil {
+				ch <- fmt.Errorf("trealla: panic: %v", ex)
+			}
+		}()
+		v, err := pl.pl_redo(q.subquery)
+		ret = v.(int32)
+		ch <- err
+	}()
+
+	select {
+	case <-ctx.Done():
+		q.setError(fmt.Errorf("trealla: canceled: %w", ctx.Err()))
+		q.Close()
+		return false
+
+	case err := <-ch:
+		q.done = ret == 0
+		if err != nil {
+			q.setError(err)
+			return false
+		}
+
+		stdout := string(pl.wasi.ReadStdout())
+		ans, err := newAnswer(q.goal, stdout)
+		switch {
+		case errors.Is(err, ErrFailure):
+			return false
+		case err != nil:
+			q.setError(err)
+			return false
+		}
+		q.push(ans)
+		return true
+	}
 }
 
-func newCString(pl *prolog, str string) (*cstring, error) {
-	cstr := &cstring{
-		size: len(str) + 1,
-	}
-	size := len(str) + 1
-	ptrv, err := pl.realloc(0, 0, 0, size)
-	if err != nil {
-		return nil, err
-	}
-	cstr.ptr = ptrv.(int32)
-	err = cstr.set(pl, str)
-	return cstr, err
+func (q *query) Current() Answer {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return q.cur
 }
 
-func (cstr *cstring) set(pl *prolog, str string) error {
-	data := pl.memory.Data()
+func (q *query) Close() error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
 
-	ptr := int(cstr.ptr)
-	for i, b := range []byte(str) {
-		data[ptr+i] = b
+	if !q.done && q.subquery != 0 {
+		q.pl.pl_done(q.subquery)
+		q.done = true
 	}
-	data[ptr+len(str)] = 0
-
 	return nil
 }
 
-func (str *cstring) free(pl *prolog) error {
-	if str.ptr == 0 {
-		return nil
+func (q *query) setError(err error) {
+	if err != nil && q.err == nil {
+		q.err = err
 	}
+}
 
-	_, err := pl.free(str.ptr, str.size, 0)
-	str.ptr = 0
-	str.size = 0
-	return err
+func (q *query) Err() error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return q.err
 }
 
 func escapeQuery(query string) string {
 	query = stringEscaper.Replace(query)
-	return fmt.Sprintf(`use_module(library(js_toplevel)), js_ask("%s")`, query)
+	return fmt.Sprintf(`js_ask("%s")`, query)
 }
 
 var stringEscaper = strings.NewReplacer(`\`, `\\`, `"`, `\"`)
+
+var _ Query = (*query)(nil)

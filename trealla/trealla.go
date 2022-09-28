@@ -4,7 +4,6 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
-	"sync"
 
 	"github.com/wasmerio/wasmer-go/wasmer"
 )
@@ -17,7 +16,7 @@ var wasmEngine = wasmer.NewEngine()
 // Prolog is a Prolog interpreter.
 type Prolog interface {
 	// Query executes a query.
-	Query(ctx context.Context, query string) (Answer, error)
+	Query(ctx context.Context, query string) Query
 	// Consult loads a Prolog file with the given path.
 	Consult(ctx context.Context, filename string) error
 }
@@ -35,14 +34,14 @@ type prolog struct {
 	ptr        int32
 	realloc    wasmFunc
 	free       wasmFunc
-	pl_eval    wasmFunc
+	pl_query   wasmFunc
 	pl_consult wasmFunc
+	pl_redo    wasmFunc
+	pl_done    wasmFunc
 
 	preopen string
 	dirs    map[string]string
 	library string
-
-	mu *sync.Mutex
 }
 
 // New creates a new Prolog interpreter.
@@ -64,7 +63,6 @@ func newProlog(opts ...Option) (*prolog, error) {
 		engine: wasmEngine,
 		store:  store,
 		module: module,
-		mu:     new(sync.Mutex),
 	}
 	for _, opt := range opts {
 		opt(pl)
@@ -141,11 +139,23 @@ func (pl *prolog) init() error {
 	}
 	pl.free = free
 
-	pl_eval, err := instance.Exports.GetFunction("pl_eval")
+	pl_query, err := instance.Exports.GetFunction("pl_query")
 	if err != nil {
 		return err
 	}
-	pl.pl_eval = pl_eval
+	pl.pl_query = pl_query
+
+	pl_redo, err := instance.Exports.GetFunction("pl_redo")
+	if err != nil {
+		return err
+	}
+	pl.pl_redo = pl_redo
+
+	pl_done, err := instance.Exports.GetFunction("pl_done")
+	if err != nil {
+		return err
+	}
+	pl.pl_done = pl_done
 
 	pl_consult, err := instance.Exports.GetFunction("pl_consult")
 	if err != nil {
@@ -157,9 +167,6 @@ func (pl *prolog) init() error {
 }
 
 func (pl *prolog) Consult(_ context.Context, filename string) error {
-	pl.mu.Lock()
-	defer pl.mu.Unlock()
-
 	fstr, err := newCString(pl, filename)
 	if err != nil {
 		return err

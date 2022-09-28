@@ -9,7 +9,7 @@ It's pretty fast. Not as fast as native Trealla, but pretty dang fast (2-5x slow
 ### Caveats
 
 - Alpha status, API will change.
-- Queries are findall'd and won't return answers until they terminate.
+- ~~Queries are findall'd and won't return answers until they terminate.~~
 - Doesn't work on Windows ([wasmer-go issue](https://github.com/wasmerio/wasmer-go/issues/69)).
 	- Works great on WSL.
 - ~~Currently interpreters are ephemeral, so you have to reconsult everything each query (working on this)~~.
@@ -26,9 +26,17 @@ func main() {
 	// load the interpreter and (optionally) grant access to the current directory
 	pl := trealla.New(trealla.WithPreopen("."))
 	// run a query; cancel context to abort it
-	answer, err := pl.Query(ctx, "member(X, [1, foo(bar), c]).")
-	// get the second substitution (answer) for X
-	x := answer.Solutions[1]["X"] // trealla.Compound{Functor: "foo", Args: ["bar"]}
+	query := pl.Query(ctx, "member(X, [1, foo(bar), c]).")
+	// iterate through answers
+	for query.Next(ctx) {
+		answer := query.Current()
+		x := answer.Solution["X"]
+		fmt.Println(x) // 1, trealla.Compound{Functor: "foo", Args: ["bar"]}, "c"
+	}
+	// make sure to check the query for errors
+	if err := query.Err(); err != nil {
+		panic(err)
+	}
 }
 ```
 

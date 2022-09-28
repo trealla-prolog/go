@@ -13,8 +13,11 @@ func BenchmarkQuery(b *testing.B) {
 	ctx := context.Background()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, err = pl.Query(ctx, "X=1, write(X)")
-		if err != nil {
+		q := pl.Query(ctx, "X=1, write(X)")
+		if !q.Next(ctx) {
+			b.Fatal("no answer")
+		}
+		if q.Err() != nil {
 			b.Fatal(err)
 		}
 	}
@@ -28,8 +31,11 @@ func BenchmarkTak(b *testing.B) {
 	ctx := context.Background()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := pl.Query(ctx, "consult('testdata/tak'), run")
-		if err != nil {
+		q := pl.Query(ctx, "consult('testdata/tak'), run")
+		if !q.Next(ctx) {
+			b.Fatal("no answer")
+		}
+		if q.Err() != nil {
 			b.Fatal(err)
 		}
 	}
