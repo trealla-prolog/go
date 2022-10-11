@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 // Term is a Prolog term.
@@ -14,6 +15,7 @@ import (
 //	- string
 //	- int64
 //	- float64
+//  - Atom
 // 	- Compound
 //	- Variable
 type Term = any
@@ -35,9 +37,6 @@ func (sol *Solution) UnmarshalJSON(bs []byte) error {
 		term, err := unmarshalTerm(raw)
 		if err != nil {
 			return err
-		}
-		if _, ok := term.(Variable); ok {
-			term = Variable(k)
 		}
 		(*sol)[k] = term
 	}
@@ -78,10 +77,6 @@ func unmarshalTerm(bs []byte) (Term, error) {
 		}
 		return list, nil
 	case map[string]any:
-		if _, ok := x["var"]; ok {
-			return Variable("_"), nil
-		}
-
 		var raws map[string]json.RawMessage
 		dec := json.NewDecoder(bytes.NewReader(bs))
 		dec.UseNumber()
@@ -92,12 +87,31 @@ func unmarshalTerm(bs []byte) (Term, error) {
 		var term struct {
 			Functor string
 			Args    []json.RawMessage
+			Var     string
+			Attr    []json.RawMessage
 		}
 		dec = json.NewDecoder(bytes.NewReader(bs))
 		dec.UseNumber()
 		if err := dec.Decode(&term); err != nil {
 			return nil, err
 		}
+
+		if term.Var != "" {
+			attr := make([]Term, 0, len(term.Attr))
+			for _, raw := range term.Attr {
+				at, err := unmarshalTerm(raw)
+				if err != nil {
+					return nil, err
+				}
+				attr = append(attr, at)
+			}
+			return Variable{Name: term.Var, Attr: attr}, nil
+		}
+
+		if len(term.Args) == 0 {
+			return Atom(term.Functor), nil
+		}
+
 		args := make([]Term, 0, len(term.Args))
 		for _, raw := range term.Args {
 			arg, err := unmarshalTerm(raw)
@@ -110,18 +124,6 @@ func unmarshalTerm(bs []byte) (Term, error) {
 			Functor: term.Functor,
 			Args:    args,
 		}, nil
-		/*
-			// dictionary
-			m := make(map[string]Term)
-			for k, raw := range raws {
-				term, err := unmarshalTerm(raw)
-				if err != nil {
-					return nil, err
-				}
-				m[k] = term
-			}
-			return m, nil
-		*/
 	case bool:
 		return x, nil
 	case nil:
@@ -129,6 +131,17 @@ func unmarshalTerm(bs []byte) (Term, error) {
 	}
 
 	return nil, fmt.Errorf("trealla: unhandled term json: %T %v", iface, iface)
+}
+
+// Atom is a Prolog atom.
+type Atom string
+
+func (a Atom) String() string {
+	return escapeAtom(string(a))
+}
+
+func (a Atom) Indicator() string {
+	return fmt.Sprintf("%s/0", escapeAtom(string(a)))
 }
 
 // Compound is a Prolog compound type.
@@ -142,19 +155,18 @@ type Compound struct {
 
 // Indicator returns the procedure indicator of this compound in Functor/Arity format.
 func (c Compound) Indicator() string {
-	// TODO: escape
-	return fmt.Sprintf("%s/%d", c.Functor, len(c.Args))
+	return fmt.Sprintf("%s/%d", escapeAtom(c.Functor), len(c.Args))
 }
 
-// String returns a Prolog-ish representation of this Compound.
+// String returns a Prolog representation of this Compound.
 func (c Compound) String() string {
 	if len(c.Args) == 0 {
-		return c.Functor
+		// TODO: this shouldn't happen anymore
+		return escapeAtom(c.Functor)
 	}
 
 	var buf strings.Builder
-	// TODO: escape
-	buf.WriteString(c.Functor)
+	buf.WriteString(escapeAtom(c.Functor))
 	buf.WriteRune('(')
 	for i, arg := range c.Args {
 		if i > 0 {
@@ -167,4 +179,36 @@ func (c Compound) String() string {
 }
 
 // Variable is an unbound Prolog variable.
-type Variable string
+type Variable struct {
+	Name string
+	Attr []Term
+}
+
+func escapeString(str string) string {
+	return `"` + stringEscaper.Replace(str) + `"`
+}
+
+func escapeAtom(atom string) string {
+	if !atomNeedsEscape(atom) {
+		return atom
+	}
+	return "'" + atomEscaper.Replace(atom) + "'"
+}
+
+func atomNeedsEscape(atom string) bool {
+	if len(atom) == 0 {
+		return true
+	}
+	for i, r := range atom {
+		if i == 0 && !unicode.IsLower(r) {
+			return true
+		}
+		if !unicode.IsLetter(r) {
+			return true
+		}
+	}
+	return false
+}
+
+var stringEscaper = strings.NewReplacer(`\`, `\\`, `"`, `\"`)
+var atomEscaper = strings.NewReplacer(`\`, `\\`, `'`, `\'`)

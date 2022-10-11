@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"sync"
 
 	"github.com/wasmerio/wasmer-go/wasmer"
 )
@@ -42,6 +43,8 @@ type prolog struct {
 	preopen string
 	dirs    map[string]string
 	library string
+
+	mu *sync.Mutex
 }
 
 // New creates a new Prolog interpreter.
@@ -63,6 +66,7 @@ func newProlog(opts ...Option) (*prolog, error) {
 		engine: wasmEngine,
 		store:  store,
 		module: module,
+		mu:     new(sync.Mutex),
 	}
 	for _, opt := range opts {
 		opt(pl)
@@ -76,7 +80,8 @@ func (pl *prolog) init() error {
 		Argument("-g").Argument("halt").
 		Argument("-q").
 		Argument("--ns").
-		CaptureStdout()
+		CaptureStdout().
+		CaptureStderr()
 	if pl.library != "" {
 		builder = builder.Argument("--library").Argument(pl.library)
 	}
@@ -167,6 +172,9 @@ func (pl *prolog) init() error {
 }
 
 func (pl *prolog) Consult(_ context.Context, filename string) error {
+	pl.mu.Lock()
+	defer pl.mu.Unlock()
+
 	fstr, err := newCString(pl, filename)
 	if err != nil {
 		return err

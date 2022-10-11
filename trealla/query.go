@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
-	"strings"
 	"sync"
 )
 
@@ -19,6 +18,16 @@ func (pl *prolog) Query(ctx context.Context, goal string) Query {
 	q := pl.start(ctx, goal)
 	runtime.SetFinalizer(q, finalize)
 	return q
+}
+
+func (pl *prolog) QueryOnce(ctx context.Context, goal string) (Answer, error) {
+	q := pl.start(ctx, goal)
+	var ans Answer
+	if q.Next(ctx) {
+		ans = q.Current()
+	}
+	q.Close()
+	return ans, q.Err()
 }
 
 func finalize(q *query) {
@@ -97,6 +106,9 @@ func (q *query) Next(ctx context.Context) bool {
 }
 
 func (pl *prolog) start(ctx context.Context, goal string) *query {
+	pl.mu.Lock()
+	defer pl.mu.Unlock()
+
 	q := &query{
 		pl:   pl,
 		goal: goal,
@@ -108,9 +120,8 @@ func (pl *prolog) start(ctx context.Context, goal string) *query {
 		q.setError(err)
 		return q
 	}
-	defer goalstr.free(pl)
 
-	subqptrv, err := pl.realloc(0, 0, 0, 4)
+	subqptrv, err := pl.realloc(0, 0, 1, 4)
 	if err != nil {
 		q.setError(err)
 		return q
@@ -127,7 +138,10 @@ func (pl *prolog) start(ctx context.Context, goal string) *query {
 			}
 		}()
 		v, err := pl.pl_query(pl.ptr, goalstr.ptr, subqptr)
-		ret = v.(int32)
+		if err == nil {
+			ret = v.(int32)
+		}
+		goalstr.free(pl)
 		ch <- err
 	}()
 
@@ -147,12 +161,13 @@ func (pl *prolog) start(ctx context.Context, goal string) *query {
 		// grab subquery pointer
 		buf := bytes.NewBuffer(pl.memory.Data()[subqptr : subqptr+4])
 		if err := binary.Read(buf, binary.LittleEndian, &q.subquery); err != nil {
-			q.setError(fmt.Errorf("trealla: couldn't read subquery pointer"))
+			q.setError(fmt.Errorf("trealla: couldn't read subquery pointer: %w", err))
 			return q
 		}
 
 		stdout := string(pl.wasi.ReadStdout())
-		ans, err := newAnswer(goal, stdout)
+		stderr := string(pl.wasi.ReadStderr())
+		ans, err := newAnswer(goal, stdout, stderr)
 		if err == nil {
 			q.push(ans)
 		} else {
@@ -163,6 +178,9 @@ func (pl *prolog) start(ctx context.Context, goal string) *query {
 }
 
 func (q *query) redo(ctx context.Context) bool {
+	q.pl.mu.Lock()
+	defer q.pl.mu.Unlock()
+
 	pl := q.pl
 	ch := make(chan error, 2)
 	var ret int32
@@ -173,7 +191,9 @@ func (q *query) redo(ctx context.Context) bool {
 			}
 		}()
 		v, err := pl.pl_redo(q.subquery)
-		ret = v.(int32)
+		if err == nil {
+			ret = v.(int32)
+		}
 		ch <- err
 	}()
 
@@ -191,7 +211,8 @@ func (q *query) redo(ctx context.Context) bool {
 		}
 
 		stdout := string(pl.wasi.ReadStdout())
-		ans, err := newAnswer(q.goal, stdout)
+		stderr := string(pl.wasi.ReadStderr())
+		ans, err := newAnswer(q.goal, stdout, stderr)
 		switch {
 		case errors.Is(err, ErrFailure):
 			return false
@@ -215,7 +236,9 @@ func (q *query) Close() error {
 	defer q.mu.Unlock()
 
 	if !q.done && q.subquery != 0 {
+		q.pl.mu.Lock()
 		q.pl.pl_done(q.subquery)
+		q.pl.mu.Unlock()
 		q.done = true
 	}
 	return nil
@@ -234,10 +257,7 @@ func (q *query) Err() error {
 }
 
 func escapeQuery(query string) string {
-	query = stringEscaper.Replace(query)
-	return fmt.Sprintf(`js_ask("%s")`, query)
+	return fmt.Sprintf(`js_ask(%s)`, escapeString(query))
 }
-
-var stringEscaper = strings.NewReplacer(`\`, `\\`, `"`, `\"`)
 
 var _ Query = (*query)(nil)

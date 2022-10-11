@@ -12,7 +12,7 @@ func newCString(pl *prolog, str string) (*cstring, error) {
 		size: len(str) + 1,
 	}
 
-	ptrv, err := pl.realloc(0, 0, 0, cstr.size)
+	ptrv, err := pl.realloc(0, 0, 1, cstr.size)
 	if err != nil {
 		return nil, err
 	}

@@ -13,8 +13,10 @@ type Answer struct {
 	// Solution (substitutions) for a successful query.
 	// Indexed by variable name.
 	Solution Solution `json:"answer"`
-	// Output is captured stdout text from this query.
-	Output string
+	// Stdout is captured standard output text from this query.
+	Stdout string
+	// Stderr is captured standard error text from this query.
+	Stderr string
 }
 
 type response struct {
@@ -23,26 +25,27 @@ type response struct {
 	Error  json.RawMessage // ball
 }
 
-func newAnswer(program, raw string) (Answer, error) {
-	if len(strings.TrimSpace(raw)) == 0 {
+func newAnswer(program, stdout, stderr string) (Answer, error) {
+	if len(strings.TrimSpace(stdout)) == 0 {
 		return Answer{}, ErrFailure
 	}
 
-	start := strings.IndexRune(raw, stx)
-	end := strings.IndexRune(raw, etx)
-	nl := strings.IndexRune(raw[end+1:], '\n') + end + 1
-	butt := len(raw)
+	start := strings.IndexRune(stdout, stx)
+	end := strings.IndexRune(stdout, etx)
+	nl := strings.IndexRune(stdout[end+1:], '\n') + end + 1
+	butt := len(stdout)
 	if nl >= 0 {
 		butt = nl
 	}
 
-	output := raw[start+1 : end]
-	js := raw[end+1 : butt]
+	output := stdout[start+1 : end]
+	js := stdout[end+1 : butt]
 
 	resp := response{
 		Answer: Answer{
 			Query:  program,
-			Output: output,
+			Stdout: output,
+			Stderr: stderr,
 		},
 	}
 

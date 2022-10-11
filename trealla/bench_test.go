@@ -15,11 +15,12 @@ func BenchmarkQuery(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		q := pl.Query(ctx, "X=1, write(X)")
 		if !q.Next(ctx) {
-			b.Fatal("no answer")
+			b.Fatal("no answer", q.Err())
 		}
 		if q.Err() != nil {
 			b.Fatal(err)
 		}
+		q.Close()
 	}
 }
 
