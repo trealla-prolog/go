@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 	"os"
 	"reflect"
 	"testing"
@@ -129,6 +130,15 @@ func TestQuery(t *testing.T) {
 					Query:    "use_module(library(tak)), run",
 					Solution: trealla.Solution{},
 					Stdout:   "'<https://josd.github.io/eye/ns#tak>'([34,13,8],13).\n",
+				},
+			},
+		},
+		{
+			name: "bigint",
+			want: []trealla.Answer{
+				{
+					Query:    "X=9999999999999999, Y = -9999999999999999, Z = 123",
+					Solution: trealla.Solution{"X": big.NewInt(9999999999999999), "Y": big.NewInt(-9999999999999999), "Z": int64(123)},
 				},
 			},
 		},

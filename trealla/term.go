@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"strconv"
 	"strings"
 	"unicode"
@@ -15,6 +16,7 @@ import (
 //	- string
 //	- int64
 //	- float64
+//	- *big.Int
 //  - Atom
 // 	- Compound
 //	- Variable
@@ -89,11 +91,20 @@ func unmarshalTerm(bs []byte) (Term, error) {
 			Args    []json.RawMessage
 			Var     string
 			Attr    []json.RawMessage
+			Number  string
 		}
 		dec = json.NewDecoder(bytes.NewReader(bs))
 		dec.UseNumber()
 		if err := dec.Decode(&term); err != nil {
 			return nil, err
+		}
+
+		if term.Number != "" {
+			n := new(big.Int)
+			if _, ok := n.SetString(term.Number, 10); !ok {
+				return nil, fmt.Errorf("trealla: failed to decode number: %s", term.Number)
+			}
+			return n, nil
 		}
 
 		if term.Var != "" {
