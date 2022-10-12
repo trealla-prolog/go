@@ -21,7 +21,7 @@ import (
 //  - Atom
 // 	- Compound
 //	- Variable
-type Term = any
+type Term any
 
 // Substitution is a mapping of variable names to substitutions (terms).
 // In other words, it's one answer to a query.
