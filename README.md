@@ -55,6 +55,6 @@ MIT. See ATTRIBUTION as well.
 
 ## See also
 
-- [trealla-js](https://wapm.io/guregu/trealla-js) is Trealla for Javascript.
+- [trealla-js](https://github.com/guregu/trealla-js) is Trealla for Javascript.
 - [ichiban/prolog](https://github.com/ichiban/prolog) is a pure Go Prolog.
 - [guregu/pengine](https://github.com/guregu/pengine) is a Pengines (SWI-Prolog) library for Go.
