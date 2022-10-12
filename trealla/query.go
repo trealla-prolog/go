@@ -40,8 +40,6 @@ type query struct {
 	mu *sync.Mutex
 }
 
-type QueryOption func(*query)
-
 // Query executes a query, returning an iterator for results.
 func (pl *prolog) Query(ctx context.Context, goal string, options ...QueryOption) Query {
 	q := pl.start(ctx, goal, options...)
@@ -298,12 +296,20 @@ func finalize(q *query) {
 	q.Close()
 }
 
+// QueryOption is an optional parameter for queries.
+type QueryOption func(*query)
+
+// WithBind binds the given variable to the given term.
+// This can be handy for passing data into queries.
+// `WithBind("X", "foo")` is equivalent to prepending `X = "foo",` to the query.
 func WithBind(variable string, value Term) QueryOption {
 	return func(q *query) {
 		q.bindVar(variable, value)
 	}
 }
 
+// WithBinding binds a map of variables to terms.
+// This can be handy for passing data into queries.
 func WithBinding(subs Substitution) QueryOption {
 	return func(q *query) {
 		for _, bind := range subs.bindings() {

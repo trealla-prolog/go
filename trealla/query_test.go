@@ -157,7 +157,7 @@ func TestQuery(t *testing.T) {
 										trealla.Atom("dif"),
 										trealla.Compound{
 											Functor: "dif",
-											Args:    []trealla.Term{trealla.Variable{Name: "X", Attr: []trealla.Term{}}, trealla.Variable{Name: "Y", Attr: []trealla.Term{}}},
+											Args:    []trealla.Term{trealla.Variable{Name: "X"}, trealla.Variable{Name: "Y"}},
 										},
 									},
 								},
@@ -172,7 +172,7 @@ func TestQuery(t *testing.T) {
 										trealla.Atom("dif"),
 										trealla.Compound{
 											Functor: "dif",
-											Args:    []trealla.Term{trealla.Variable{Name: "X", Attr: []trealla.Term{}}, trealla.Variable{Name: "Y", Attr: []trealla.Term{}}},
+											Args:    []trealla.Term{trealla.Variable{Name: "X"}, trealla.Variable{Name: "Y"}},
 										},
 									},
 								},
@@ -349,4 +349,21 @@ func Example() {
 	// Output: 1
 	// foo(bar)
 	// c
+}
+
+func ExampleWithBind() {
+	ctx := context.Background()
+	pl, err := trealla.New()
+	if err != nil {
+		panic(err)
+	}
+
+	// bind the variable X to the atom 'hello world' through query options
+	answer, err := pl.QueryOnce(ctx, "write(X).", trealla.WithBind("X", trealla.Atom("hello world")))
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(answer.Stdout)
+	// Output: hello world
 }

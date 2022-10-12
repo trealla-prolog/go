@@ -136,6 +136,9 @@ func unmarshalTerm(bs []byte) (Term, error) {
 				}
 				attr = append(attr, at)
 			}
+			if len(attr) == 0 {
+				attr = nil
+			}
 			return Variable{Name: term.Var, Attr: attr}, nil
 		}
 
