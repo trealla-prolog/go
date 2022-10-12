@@ -203,7 +203,12 @@ func (c Compound) String() string {
 		if i > 0 {
 			buf.WriteString(", ")
 		}
-		buf.WriteString(fmt.Sprintf("%v", arg))
+		text, err := marshal(arg)
+		if err != nil {
+			buf.WriteString(fmt.Sprintf("<invalid: %v>", err))
+			continue
+		}
+		buf.WriteString(text)
 	}
 	buf.WriteRune(')')
 	return buf.String()
