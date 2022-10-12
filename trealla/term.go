@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"sort"
 	"strconv"
 	"strings"
 	"unicode"
@@ -22,19 +23,38 @@ import (
 //	- Variable
 type Term = any
 
-// Solution is a mapping of variable names to substitutions.
+// Substitution is a mapping of variable names to substitutions (terms).
 // In other words, it's one answer to a query.
-type Solution map[string]Term
+type Substitution map[string]Term
+
+type binding struct {
+	name  string
+	value Term
+}
+
+func (sub Substitution) bindings() []binding {
+	bs := make([]binding, 0, len(sub))
+	for k, v := range sub {
+		bs = append(bs, binding{
+			name:  k,
+			value: v,
+		})
+	}
+	sort.Slice(bs, func(i, j int) bool {
+		return bs[i].name < bs[j].name
+	})
+	return bs
+}
 
 // UnmarshalJSON implements the encoding/json.Marshaler interface.
-func (sol *Solution) UnmarshalJSON(bs []byte) error {
+func (sol *Substitution) UnmarshalJSON(bs []byte) error {
 	var raws map[string]json.RawMessage
 	dec := json.NewDecoder(bytes.NewReader(bs))
 	dec.UseNumber()
 	if err := dec.Decode(&raws); err != nil {
 		return err
 	}
-	*sol = make(Solution, len(raws))
+	*sol = make(Substitution, len(raws))
 	for k, raw := range raws {
 		term, err := unmarshalTerm(raw)
 		if err != nil {
@@ -193,6 +213,54 @@ func (c Compound) String() string {
 type Variable struct {
 	Name string
 	Attr []Term
+}
+
+func (v Variable) String() string {
+	if len(v.Attr) == 0 {
+		return v.Name
+	}
+	str, err := marshal(v.Attr)
+	if err != nil {
+		return fmt.Sprintf("<invalid var: %v>", err)
+	}
+	return str
+}
+
+func marshal(term Term) (string, error) {
+	switch x := term.(type) {
+	case string:
+		return escapeString(x), nil
+	case int64:
+		return strconv.FormatInt(x, 10), nil
+	case int:
+		return strconv.FormatInt(int64(x), 10), nil
+	case float64:
+		return strconv.FormatFloat(x, 'f', -1, 64), nil
+	case *big.Int:
+		return x.String(), nil
+	case Atom:
+		return x.String(), nil
+	case Compound:
+		return x.String(), nil
+	case Variable:
+		return x.String(), nil
+	case []Term:
+		var sb strings.Builder
+		sb.WriteRune('[')
+		for i, t := range x {
+			if i != 0 {
+				sb.WriteRune(',')
+			}
+			y, err := marshal(t)
+			if err != nil {
+				return "", err
+			}
+			sb.WriteString(y)
+		}
+		sb.WriteRune(']')
+		return sb.String(), nil
+	}
+	return "", fmt.Errorf("trealla: can't marshal type %T, value: %v", term, term)
 }
 
 func escapeString(str string) string {

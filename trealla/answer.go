@@ -12,7 +12,7 @@ type Answer struct {
 	Query string
 	// Solution (substitutions) for a successful query.
 	// Indexed by variable name.
-	Solution Solution `json:"answer"`
+	Solution Substitution `json:"answer"`
 	// Stdout is captured standard output text from this query.
 	Stdout string
 	// Stderr is captured standard error text from this query.

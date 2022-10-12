@@ -39,7 +39,7 @@ func TestQuery(t *testing.T) {
 			want: []trealla.Answer{
 				{
 					Query:    `true.`,
-					Solution: trealla.Solution{},
+					Solution: trealla.Substitution{},
 				},
 			},
 		},
@@ -48,19 +48,19 @@ func TestQuery(t *testing.T) {
 			want: []trealla.Answer{
 				{
 					Query: `hello(X).`,
-					Solution: trealla.Solution{
+					Solution: trealla.Substitution{
 						"X": trealla.Atom("world"),
 					},
 				},
 				{
 					Query: `hello(X).`,
-					Solution: trealla.Solution{
+					Solution: trealla.Substitution{
 						"X": trealla.Atom("Welt"),
 					},
 				},
 				{
 					Query: `hello(X).`,
-					Solution: trealla.Solution{
+					Solution: trealla.Substitution{
 						"X": trealla.Atom("世界"),
 					},
 				},
@@ -71,7 +71,7 @@ func TestQuery(t *testing.T) {
 			want: []trealla.Answer{
 				{
 					Query:    `assertz(こんにちは(世界)).`,
-					Solution: trealla.Solution{},
+					Solution: trealla.Substitution{},
 				},
 			},
 		},
@@ -80,7 +80,7 @@ func TestQuery(t *testing.T) {
 			want: []trealla.Answer{
 				{
 					Query:    `こんにちは(X).`,
-					Solution: trealla.Solution{"X": trealla.Atom("世界")},
+					Solution: trealla.Substitution{"X": trealla.Atom("世界")},
 				},
 			},
 		},
@@ -89,29 +89,29 @@ func TestQuery(t *testing.T) {
 			want: []trealla.Answer{
 				{
 					Query:    `member(X, [1,foo(bar),4.2,"baz",'boop', [q, '"'], '\\', '\n']).`,
-					Solution: trealla.Solution{"X": int64(1)},
+					Solution: trealla.Substitution{"X": int64(1)},
 				},
 				{
 					Query:    `member(X, [1,foo(bar),4.2,"baz",'boop', [q, '"'], '\\', '\n']).`,
-					Solution: trealla.Solution{"X": trealla.Compound{Functor: "foo", Args: []trealla.Term{trealla.Atom("bar")}}}},
+					Solution: trealla.Substitution{"X": trealla.Compound{Functor: "foo", Args: []trealla.Term{trealla.Atom("bar")}}}},
 				{
 					Query:    `member(X, [1,foo(bar),4.2,"baz",'boop', [q, '"'], '\\', '\n']).`,
-					Solution: trealla.Solution{"X": 4.2}},
+					Solution: trealla.Substitution{"X": 4.2}},
 				{
 					Query:    `member(X, [1,foo(bar),4.2,"baz",'boop', [q, '"'], '\\', '\n']).`,
-					Solution: trealla.Solution{"X": "baz"}},
+					Solution: trealla.Substitution{"X": "baz"}},
 				{
 					Query:    `member(X, [1,foo(bar),4.2,"baz",'boop', [q, '"'], '\\', '\n']).`,
-					Solution: trealla.Solution{"X": trealla.Atom("boop")}},
+					Solution: trealla.Substitution{"X": trealla.Atom("boop")}},
 				{
 					Query:    `member(X, [1,foo(bar),4.2,"baz",'boop', [q, '"'], '\\', '\n']).`,
-					Solution: trealla.Solution{"X": []trealla.Term{trealla.Atom("q"), trealla.Atom(`"`)}}},
+					Solution: trealla.Substitution{"X": []trealla.Term{trealla.Atom("q"), trealla.Atom(`"`)}}},
 				{
 					Query:    `member(X, [1,foo(bar),4.2,"baz",'boop', [q, '"'], '\\', '\n']).`,
-					Solution: trealla.Solution{"X": trealla.Atom(`\`)}},
+					Solution: trealla.Substitution{"X": trealla.Atom(`\`)}},
 				{
 					Query:    `member(X, [1,foo(bar),4.2,"baz",'boop', [q, '"'], '\\', '\n']).`,
-					Solution: trealla.Solution{"X": trealla.Atom("\n")}},
+					Solution: trealla.Substitution{"X": trealla.Atom("\n")}},
 			},
 		},
 		{
@@ -128,7 +128,7 @@ func TestQuery(t *testing.T) {
 			want: []trealla.Answer{
 				{
 					Query:    "use_module(library(tak)), run",
-					Solution: trealla.Solution{},
+					Solution: trealla.Substitution{},
 					Stdout:   "'<https://josd.github.io/eye/ns#tak>'([34,13,8],13).\n",
 				},
 			},
@@ -138,7 +138,47 @@ func TestQuery(t *testing.T) {
 			want: []trealla.Answer{
 				{
 					Query:    "X=9999999999999999, Y = -9999999999999999, Z = 123",
-					Solution: trealla.Solution{"X": big.NewInt(9999999999999999), "Y": big.NewInt(-9999999999999999), "Z": int64(123)},
+					Solution: trealla.Substitution{"X": big.NewInt(9999999999999999), "Y": big.NewInt(-9999999999999999), "Z": int64(123)},
+				},
+			},
+		},
+		{
+			name: "residual goals",
+			want: []trealla.Answer{
+				{
+					Query: "dif(X, Y).",
+					Solution: trealla.Substitution{
+						"X": trealla.Variable{
+							Name: "X",
+							Attr: []trealla.Term{
+								trealla.Compound{
+									Functor: ":",
+									Args: []trealla.Term{
+										trealla.Atom("dif"),
+										trealla.Compound{
+											Functor: "dif",
+											Args:    []trealla.Term{trealla.Variable{Name: "X", Attr: []trealla.Term{}}, trealla.Variable{Name: "Y", Attr: []trealla.Term{}}},
+										},
+									},
+								},
+							},
+						},
+						"Y": trealla.Variable{
+							Name: "Y",
+							Attr: []trealla.Term{
+								trealla.Compound{
+									Functor: ":",
+									Args: []trealla.Term{
+										trealla.Atom("dif"),
+										trealla.Compound{
+											Functor: "dif",
+											Args:    []trealla.Term{trealla.Variable{Name: "X", Attr: []trealla.Term{}}, trealla.Variable{Name: "Y", Attr: []trealla.Term{}}},
+										},
+									},
+								},
+							},
+						},
+					},
 				},
 			},
 		},
@@ -221,6 +261,64 @@ func TestSyntaxError(t *testing.T) {
 	if !reflect.DeepEqual(ex.Ball, want) {
 		t.Error(`unexpected error value. want:`, want, `got:`, ex.Ball)
 	}
+}
+
+func TestBind(t *testing.T) {
+	ctx := context.Background()
+	pl, err := trealla.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := int64(123)
+	atom := trealla.Atom("abc")
+	validate := func(t *testing.T, ans trealla.Answer) {
+		t.Helper()
+		if x := ans.Solution["X"]; x != want {
+			t.Error("unexpected value. want:", want, "got:", x)
+		}
+		if y := ans.Solution["Y"]; y != want {
+			t.Error("unexpected value. want:", want, "got:", y)
+		}
+		if z := ans.Solution["Z"]; z != atom {
+			t.Error("unexpected value. want:", atom, "got:", z)
+		}
+	}
+
+	t.Run("WithBind", func(t *testing.T) {
+		ans, err := pl.QueryOnce(ctx, "Y = X.", trealla.WithBind("X", 123), trealla.WithBind("Z", trealla.Atom("abc")))
+		if err != nil {
+			t.Fatal(err)
+		}
+		validate(t, ans)
+	})
+
+	t.Run("WithBinding", func(t *testing.T) {
+		ans, err := pl.QueryOnce(ctx, "Y = X.", trealla.WithBinding(trealla.Substitution{"X": want, "Z": atom}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		validate(t, ans)
+	})
+
+	t.Run("overwriting", func(t *testing.T) {
+		ans, err := pl.QueryOnce(ctx, "Y = X.", trealla.WithBinding(trealla.Substitution{"X": -1, "Z": atom}), trealla.WithBind("X", want))
+		if err != nil {
+			t.Fatal(err)
+		}
+		validate(t, ans)
+	})
+
+	t.Run("lists", func(t *testing.T) {
+		ans, err := pl.QueryOnce(ctx, "Y = X.", trealla.WithBind("X", []trealla.Term{int64(555)}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := []trealla.Term{int64(555)}
+		if x := ans.Solution["X"]; !reflect.DeepEqual(x, want) {
+			t.Error("unexpected value. want:", want, "got:", x)
+		}
+	})
 }
 
 func Example() {

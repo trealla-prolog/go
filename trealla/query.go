@@ -7,42 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"strings"
 	"sync"
 )
 
 const stx = '\x02' // START OF TEXT
 const etx = '\x03' // END OF TEXT
-
-// Query executes a query, returning an iterator for results.
-func (pl *prolog) Query(ctx context.Context, goal string) Query {
-	q := pl.start(ctx, goal)
-	runtime.SetFinalizer(q, finalize)
-	return q
-}
-
-func (pl *prolog) QueryOnce(ctx context.Context, goal string) (Answer, error) {
-	q := pl.start(ctx, goal)
-	var ans Answer
-	if q.Next(ctx) {
-		ans = q.Current()
-	}
-	q.Close()
-	return ans, q.Err()
-}
-
-func finalize(q *query) {
-	q.Close()
-}
-
-// QueryAnswer executes a query and returns a single result.
-func (pl *prolog) QueryAnswer(ctx context.Context, goal string) (Answer, error) {
-	q := pl.Query(ctx, goal)
-	defer q.Close()
-	if q.Next(ctx) {
-		return q.Current(), nil
-	}
-	return Answer{}, q.Err()
-}
 
 // Query is a Prolog query iterator.
 type Query interface {
@@ -59,6 +29,7 @@ type Query interface {
 type query struct {
 	pl       *prolog
 	goal     string
+	bind     []binding
 	subquery int32
 
 	queue []Answer
@@ -69,43 +40,26 @@ type query struct {
 	mu *sync.Mutex
 }
 
-func (q *query) push(a Answer) {
-	q.queue = append(q.queue, a)
+type QueryOption func(*query)
+
+// Query executes a query, returning an iterator for results.
+func (pl *prolog) Query(ctx context.Context, goal string, options ...QueryOption) Query {
+	q := pl.start(ctx, goal, options...)
+	runtime.SetFinalizer(q, finalize)
+	return q
 }
 
-func (q *query) pop() bool {
-	if len(q.queue) == 0 {
-		return false
+func (pl *prolog) QueryOnce(ctx context.Context, goal string, options ...QueryOption) (Answer, error) {
+	q := pl.start(ctx, goal, options...)
+	var ans Answer
+	if q.Next(ctx) {
+		ans = q.Current()
 	}
-	q.cur = q.queue[0]
-	q.queue = q.queue[1:]
-	return true
+	q.Close()
+	return ans, q.Err()
 }
 
-func (q *query) Next(ctx context.Context) bool {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-
-	if q.err != nil {
-		return false
-	}
-
-	if q.pop() {
-		return true
-	}
-
-	if q.done {
-		return false
-	}
-
-	if q.redo(ctx) {
-		return q.pop()
-	}
-
-	return false
-}
-
-func (pl *prolog) start(ctx context.Context, goal string) *query {
+func (pl *prolog) start(ctx context.Context, goal string, options ...QueryOption) *query {
 	pl.mu.Lock()
 	defer pl.mu.Unlock()
 
@@ -115,7 +69,15 @@ func (pl *prolog) start(ctx context.Context, goal string) *query {
 		mu:   new(sync.Mutex),
 	}
 
-	goalstr, err := newCString(pl, escapeQuery(goal))
+	for _, opt := range options {
+		opt(q)
+	}
+
+	if err := q.reify(); err != nil {
+		q.setError(err)
+		return q
+	}
+	goalstr, err := newCString(pl, escapeQuery(q.goal))
 	if err != nil {
 		q.setError(err)
 		return q
@@ -167,7 +129,7 @@ func (pl *prolog) start(ctx context.Context, goal string) *query {
 
 		stdout := string(pl.wasi.ReadStdout())
 		stderr := string(pl.wasi.ReadStderr())
-		ans, err := newAnswer(goal, stdout, stderr)
+		ans, err := newAnswer(q.goal, stdout, stderr)
 		if err == nil {
 			q.push(ans)
 		} else {
@@ -225,6 +187,42 @@ func (q *query) redo(ctx context.Context) bool {
 	}
 }
 
+func (q *query) Next(ctx context.Context) bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	if q.err != nil {
+		return false
+	}
+
+	if q.pop() {
+		return true
+	}
+
+	if q.done {
+		return false
+	}
+
+	if q.redo(ctx) {
+		return q.pop()
+	}
+
+	return false
+}
+
+func (q *query) push(a Answer) {
+	q.queue = append(q.queue, a)
+}
+
+func (q *query) pop() bool {
+	if len(q.queue) == 0 {
+		return false
+	}
+	q.cur = q.queue[0]
+	q.queue = q.queue[1:]
+	return true
+}
+
 func (q *query) Current() Answer {
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -244,6 +242,42 @@ func (q *query) Close() error {
 	return nil
 }
 
+func (q *query) bindVar(name string, value Term) {
+	for i, bind := range q.bind {
+		if bind.name == name {
+			bind.value = value
+			q.bind[i] = bind
+			return
+		}
+	}
+	q.bind = append(q.bind, binding{
+		name:  name,
+		value: value,
+	})
+}
+
+func (q *query) reify() error {
+	if len(q.bind) == 0 {
+		return nil
+	}
+
+	var sb strings.Builder
+	for _, bind := range q.bind {
+		sb.WriteString(bind.name)
+		sb.WriteString(" = ")
+		v, err := marshal(bind.value)
+		if err != nil {
+			return fmt.Errorf("trealla: failed to convert bound variable to Prolog (name: %s): %w", bind.name, err)
+		}
+		sb.WriteString(v)
+		sb.WriteString(", ")
+	}
+	sb.WriteString(q.goal)
+
+	q.goal = sb.String()
+	return nil
+}
+
 func (q *query) setError(err error) {
 	if err != nil && q.err == nil {
 		q.err = err
@@ -258,6 +292,24 @@ func (q *query) Err() error {
 
 func escapeQuery(query string) string {
 	return fmt.Sprintf(`js_ask(%s)`, escapeString(query))
+}
+
+func finalize(q *query) {
+	q.Close()
+}
+
+func WithBind(variable string, value Term) QueryOption {
+	return func(q *query) {
+		q.bindVar(variable, value)
+	}
+}
+
+func WithBinding(subs Substitution) QueryOption {
+	return func(q *query) {
+		for _, bind := range subs.bindings() {
+			q.bindVar(bind.name, bind.value)
+		}
+	}
 }
 
 var _ Query = (*query)(nil)

@@ -17,7 +17,8 @@ var wasmEngine = wasmer.NewEngine()
 // Prolog is a Prolog interpreter.
 type Prolog interface {
 	// Query executes a query.
-	Query(ctx context.Context, query string) Query
+	Query(ctx context.Context, query string, options ...QueryOption) Query
+	QueryOnce(ctx context.Context, query string, options ...QueryOption) (Answer, error)
 	// Consult loads a Prolog file with the given path.
 	Consult(ctx context.Context, filename string) error
 }
