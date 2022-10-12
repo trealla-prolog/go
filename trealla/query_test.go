@@ -199,7 +199,6 @@ func TestQuery(t *testing.T) {
 				t.Error("unexpected error:", err)
 			}
 			if tc.err == nil && !reflect.DeepEqual(ans, tc.want) {
-				// TODO
 				t.Errorf("bad answer. \nwant: %#v\ngot: %#v\n", tc.want, ans)
 			}
 		})

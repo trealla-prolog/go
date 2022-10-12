@@ -107,7 +107,7 @@ func unmarshalTerm(bs []byte) (Term, error) {
 		}
 
 		var term struct {
-			Functor string
+			Functor Atom
 			Args    []json.RawMessage
 			Var     string
 			Attr    []json.RawMessage
@@ -172,19 +172,19 @@ type Atom string
 
 // String returns the Prolog text representation of this atom.
 func (a Atom) String() string {
-	return escapeAtom(string(a))
+	return escapeAtom(a)
 }
 
 // Indicator returns a predicate indicator for this atom ("foo/0").
 func (a Atom) Indicator() string {
-	return fmt.Sprintf("%s/0", escapeAtom(string(a)))
+	return fmt.Sprintf("%s/0", escapeAtom(a))
 }
 
 // Compound is a Prolog compound type.
 type Compound struct {
 	// Functor is the principal functor of the compound.
 	// Example: the Functor of foo(bar) is "foo".
-	Functor string
+	Functor Atom
 	// Args are the arguments of the compound.
 	Args []Term
 }
@@ -197,7 +197,6 @@ func (c Compound) Indicator() string {
 // String returns a Prolog representation of this Compound.
 func (c Compound) String() string {
 	if len(c.Args) == 0 {
-		// TODO: this shouldn't happen anymore
 		return escapeAtom(c.Functor)
 	}
 
@@ -230,11 +229,18 @@ func (v Variable) String() string {
 	if len(v.Attr) == 0 {
 		return v.Name
 	}
-	str, err := marshal(v.Attr)
-	if err != nil {
-		return fmt.Sprintf("<invalid var: %v>", err)
+	var sb strings.Builder
+	for i, attr := range v.Attr {
+		if i != 0 {
+			sb.WriteString(", ")
+		}
+		text, err := marshal(attr)
+		if err != nil {
+			return fmt.Sprintf("<invalid var: %v>", err)
+		}
+		sb.WriteString(text)
 	}
-	return str
+	return sb.String()
 }
 
 func marshal(term Term) (string, error) {
@@ -260,13 +266,13 @@ func marshal(term Term) (string, error) {
 		sb.WriteRune('[')
 		for i, t := range x {
 			if i != 0 {
-				sb.WriteRune(',')
+				sb.WriteString(", ")
 			}
-			y, err := marshal(t)
+			text, err := marshal(t)
 			if err != nil {
 				return "", err
 			}
-			sb.WriteString(y)
+			sb.WriteString(text)
 		}
 		sb.WriteRune(']')
 		return sb.String(), nil
@@ -278,14 +284,14 @@ func escapeString(str string) string {
 	return `"` + stringEscaper.Replace(str) + `"`
 }
 
-func escapeAtom(atom string) string {
+func escapeAtom(atom Atom) string {
 	if !atomNeedsEscape(atom) {
-		return atom
+		return string(atom)
 	}
-	return "'" + atomEscaper.Replace(atom) + "'"
+	return "'" + atomEscaper.Replace(string(atom)) + "'"
 }
 
-func atomNeedsEscape(atom string) bool {
+func atomNeedsEscape(atom Atom) bool {
 	if len(atom) == 0 {
 		return true
 	}

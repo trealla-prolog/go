@@ -1,3 +1,4 @@
+// Package trealla provides a Prolog interpreter.
 package trealla
 
 import (

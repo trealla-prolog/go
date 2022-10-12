@@ -1,6 +1,9 @@
 package trealla
 
-import "testing"
+import (
+	"math/big"
+	"testing"
+)
 
 func TestCompound(t *testing.T) {
 	c0 := Compound{
@@ -14,5 +17,57 @@ func TestCompound(t *testing.T) {
 	pi := "foo/2"
 	if c0.Indicator() != pi {
 		t.Errorf("bad indicator. want: %v got: %v", pi, c0.Indicator())
+	}
+}
+
+func TestMarshal(t *testing.T) {
+	cases := []struct {
+		term Term
+		want string
+	}{
+		{
+			term: Atom("foo"),
+			want: "foo",
+		},
+		{
+			term: Atom("Bar"),
+			want: "'Bar'",
+		},
+		{
+			term: Atom("hello world"),
+			want: "'hello world'",
+		},
+		{
+			term: "string",
+			want: `"string"`,
+		},
+		{
+			term: `foo\bar`,
+			want: `"foo\\bar"`,
+		},
+		{
+			term: big.NewInt(9999999999999999),
+			want: "9999999999999999",
+		},
+		{
+			term: Variable{Name: "X", Attr: []Term{Compound{Functor: ":", Args: []Term{Atom("dif"), Compound{Functor: "dif", Args: []Term{Variable{Name: "X"}, Variable{Name: "Y"}}}}}}},
+			want: "':'(dif, dif(X, Y))",
+		},
+		{
+			term: []Term{int64(1), int64(2)},
+			want: "[1, 2]",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.want, func(t *testing.T) {
+			text, err := marshal(tc.term)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if text != tc.want {
+				t.Error("bad result. want:", tc.want, "got:", text)
+			}
+		})
 	}
 }
