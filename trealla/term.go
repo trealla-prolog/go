@@ -167,10 +167,12 @@ func unmarshalTerm(bs []byte) (Term, error) {
 // Atom is a Prolog atom.
 type Atom string
 
+// String returns the Prolog text representation of this atom.
 func (a Atom) String() string {
 	return escapeAtom(string(a))
 }
 
+// Indicator returns a predicate indicator for this atom ("foo/0").
 func (a Atom) Indicator() string {
 	return fmt.Sprintf("%s/0", escapeAtom(string(a)))
 }
@@ -220,6 +222,7 @@ type Variable struct {
 	Attr []Term
 }
 
+// String returns the Prolog text representation of this variable.
 func (v Variable) String() string {
 	if len(v.Attr) == 0 {
 		return v.Name

@@ -29,7 +29,7 @@ func main() {
 	for query.Next(ctx) {
 		answer := query.Current()
 		x := answer.Solution["X"]
-		fmt.Println(x) // 1, trealla.Compound{Functor: "foo", Args: ["bar"]}, "c"
+		fmt.Println(x) // 1, trealla.Compound{Functor: "foo", Args: [trealla.Atom("bar")]}, "c"}
 	}
 	// make sure to check the query for errors
 	if err := query.Err(); err != nil {
