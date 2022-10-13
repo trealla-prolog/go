@@ -32,6 +32,9 @@ func newAnswer(program, stdout, stderr string) (Answer, error) {
 
 	start := strings.IndexRune(stdout, stx)
 	end := strings.IndexRune(stdout, etx)
+	if !(end > start) {
+		return Answer{}, fmt.Errorf("trealla: invalid query response: %s", stdout)
+	}
 	nl := strings.IndexRune(stdout[end+1:], '\n') + end + 1
 	butt := len(stdout)
 	if nl >= 0 {

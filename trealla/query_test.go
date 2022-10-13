@@ -152,14 +152,8 @@ func TestQuery(t *testing.T) {
 							Name: "X",
 							Attr: []trealla.Term{
 								trealla.Compound{
-									Functor: ":",
-									Args: []trealla.Term{
-										trealla.Atom("dif"),
-										trealla.Compound{
-											Functor: "dif",
-											Args:    []trealla.Term{trealla.Variable{Name: "X"}, trealla.Variable{Name: "Y"}},
-										},
-									},
+									Functor: "dif",
+									Args:    []trealla.Term{trealla.Variable{Name: "X"}, trealla.Variable{Name: "Y"}},
 								},
 							},
 						},
@@ -167,14 +161,8 @@ func TestQuery(t *testing.T) {
 							Name: "Y",
 							Attr: []trealla.Term{
 								trealla.Compound{
-									Functor: ":",
-									Args: []trealla.Term{
-										trealla.Atom("dif"),
-										trealla.Compound{
-											Functor: "dif",
-											Args:    []trealla.Term{trealla.Variable{Name: "X"}, trealla.Variable{Name: "Y"}},
-										},
-									},
+									Functor: "dif",
+									Args:    []trealla.Term{trealla.Variable{Name: "X"}, trealla.Variable{Name: "Y"}},
 								},
 							},
 						},
@@ -199,7 +187,7 @@ func TestQuery(t *testing.T) {
 				t.Error("unexpected error:", err)
 			}
 			if tc.err == nil && !reflect.DeepEqual(ans, tc.want) {
-				t.Errorf("bad answer. \nwant: %#v\ngot: %#v\n", tc.want, ans)
+				t.Errorf("bad answer. \nwant: %#v\ngot:  %#v\n", tc.want, ans)
 			}
 		})
 	}
