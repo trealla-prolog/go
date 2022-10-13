@@ -23,6 +23,112 @@ import (
 //	- Variable
 type Term any
 
+// Atom is a Prolog atom.
+type Atom string
+
+// String returns the Prolog text representation of this atom.
+func (a Atom) String() string {
+	return a.escape()
+}
+
+// Indicator returns a predicate indicator for this atom ("foo/0").
+func (a Atom) Indicator() string {
+	return fmt.Sprintf("%s/0", a.escape())
+}
+
+// Of returns a Compound term with this atom as the principal functor.
+func (a Atom) Of(args ...Term) Compound {
+	return Compound{
+		Functor: a,
+		Args:    args,
+	}
+}
+
+func (a Atom) escape() string {
+	if !a.needsEscape() {
+		return string(a)
+	}
+	return "'" + atomEscaper.Replace(string(a)) + "'"
+}
+
+func (a Atom) needsEscape() bool {
+	if len(a) == 0 {
+		return true
+	}
+	for i, char := range a {
+		if i == 0 && !unicode.IsLower(char) {
+			return true
+		}
+		if !unicode.IsLetter(char) {
+			return true
+		}
+	}
+	return false
+}
+
+// Compound is a Prolog compound type.
+type Compound struct {
+	// Functor is the principal functor of the compound.
+	// Example: the Functor of foo(bar) is "foo".
+	Functor Atom
+	// Args are the arguments of the compound.
+	Args []Term
+}
+
+// Indicator returns the procedure indicator of this compound in Functor/Arity format.
+func (c Compound) Indicator() string {
+	return fmt.Sprintf("%s/%d", c.Functor.String(), len(c.Args))
+}
+
+// String returns a Prolog representation of this Compound.
+func (c Compound) String() string {
+	if len(c.Args) == 0 {
+		return c.Functor.String()
+	}
+
+	var buf strings.Builder
+	buf.WriteString(c.Functor.String())
+	buf.WriteRune('(')
+	for i, arg := range c.Args {
+		if i > 0 {
+			buf.WriteString(", ")
+		}
+		text, err := marshal(arg)
+		if err != nil {
+			buf.WriteString(fmt.Sprintf("<invalid: %v>", err))
+			continue
+		}
+		buf.WriteString(text)
+	}
+	buf.WriteRune(')')
+	return buf.String()
+}
+
+// Variable is an unbound Prolog variable.
+type Variable struct {
+	Name string
+	Attr []Term
+}
+
+// String returns the Prolog text representation of this variable.
+func (v Variable) String() string {
+	if len(v.Attr) == 0 {
+		return v.Name
+	}
+	var sb strings.Builder
+	for i, attr := range v.Attr {
+		if i != 0 {
+			sb.WriteString(", ")
+		}
+		text, err := marshal(attr)
+		if err != nil {
+			return fmt.Sprintf("<invalid var: %v>", err)
+		}
+		sb.WriteString(text)
+	}
+	return sb.String()
+}
+
 // Substitution is a mapping of variable names to substitutions (terms).
 // In other words, it's one answer to a query.
 type Substitution map[string]Term
@@ -167,82 +273,6 @@ func unmarshalTerm(bs []byte) (Term, error) {
 	return nil, fmt.Errorf("trealla: unhandled term json: %T %v", iface, iface)
 }
 
-// Atom is a Prolog atom.
-type Atom string
-
-// String returns the Prolog text representation of this atom.
-func (a Atom) String() string {
-	return escapeAtom(a)
-}
-
-// Indicator returns a predicate indicator for this atom ("foo/0").
-func (a Atom) Indicator() string {
-	return fmt.Sprintf("%s/0", escapeAtom(a))
-}
-
-// Compound is a Prolog compound type.
-type Compound struct {
-	// Functor is the principal functor of the compound.
-	// Example: the Functor of foo(bar) is "foo".
-	Functor Atom
-	// Args are the arguments of the compound.
-	Args []Term
-}
-
-// Indicator returns the procedure indicator of this compound in Functor/Arity format.
-func (c Compound) Indicator() string {
-	return fmt.Sprintf("%s/%d", escapeAtom(c.Functor), len(c.Args))
-}
-
-// String returns a Prolog representation of this Compound.
-func (c Compound) String() string {
-	if len(c.Args) == 0 {
-		return escapeAtom(c.Functor)
-	}
-
-	var buf strings.Builder
-	buf.WriteString(escapeAtom(c.Functor))
-	buf.WriteRune('(')
-	for i, arg := range c.Args {
-		if i > 0 {
-			buf.WriteString(", ")
-		}
-		text, err := marshal(arg)
-		if err != nil {
-			buf.WriteString(fmt.Sprintf("<invalid: %v>", err))
-			continue
-		}
-		buf.WriteString(text)
-	}
-	buf.WriteRune(')')
-	return buf.String()
-}
-
-// Variable is an unbound Prolog variable.
-type Variable struct {
-	Name string
-	Attr []Term
-}
-
-// String returns the Prolog text representation of this variable.
-func (v Variable) String() string {
-	if len(v.Attr) == 0 {
-		return v.Name
-	}
-	var sb strings.Builder
-	for i, attr := range v.Attr {
-		if i != 0 {
-			sb.WriteString(", ")
-		}
-		text, err := marshal(attr)
-		if err != nil {
-			return fmt.Sprintf("<invalid var: %v>", err)
-		}
-		sb.WriteString(text)
-	}
-	return sb.String()
-}
-
 func marshal(term Term) (string, error) {
 	switch x := term.(type) {
 	case string:
@@ -282,28 +312,6 @@ func marshal(term Term) (string, error) {
 
 func escapeString(str string) string {
 	return `"` + stringEscaper.Replace(str) + `"`
-}
-
-func escapeAtom(atom Atom) string {
-	if !atomNeedsEscape(atom) {
-		return string(atom)
-	}
-	return "'" + atomEscaper.Replace(string(atom)) + "'"
-}
-
-func atomNeedsEscape(atom Atom) bool {
-	if len(atom) == 0 {
-		return true
-	}
-	for i, r := range atom {
-		if i == 0 && !unicode.IsLower(r) {
-			return true
-		}
-		if !unicode.IsLetter(r) {
-			return true
-		}
-	}
-	return false
 }
 
 var stringEscaper = strings.NewReplacer(`\`, `\\`, `"`, `\"`)
