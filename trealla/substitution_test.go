@@ -58,7 +58,7 @@ func ExampleSubstitution_Scan() {
 		panic(err)
 	}
 
-	answer, err := pl.QueryOnce(ctx, `X = 123, Y = abc, Z = ["hello","world"].`)
+	answer, err := pl.QueryOnce(ctx, `X = 123, Y = abc, Z = ["hello", "world"].`)
 	if err != nil {
 		panic(err)
 	}

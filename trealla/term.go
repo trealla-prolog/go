@@ -27,12 +27,15 @@ type Atom string
 
 // String returns the Prolog text representation of this atom.
 func (a Atom) String() string {
-	return a.escape()
+	if !a.needsEscape() {
+		return string(a)
+	}
+	return "'" + atomEscaper.Replace(string(a)) + "'"
 }
 
 // Indicator returns a predicate indicator for this atom ("foo/0").
 func (a Atom) Indicator() string {
-	return fmt.Sprintf("%s/0", a.escape())
+	return fmt.Sprintf("%s/0", a.String())
 }
 
 // Of returns a Compound term with this atom as the principal functor.
@@ -43,13 +46,6 @@ func (a Atom) Of(args ...Term) Compound {
 	}
 }
 
-func (a Atom) escape() string {
-	if !a.needsEscape() {
-		return string(a)
-	}
-	return "'" + atomEscaper.Replace(string(a)) + "'"
-}
-
 func (a Atom) needsEscape() bool {
 	if len(a) == 0 {
 		return true
@@ -58,7 +54,7 @@ func (a Atom) needsEscape() bool {
 		if i == 0 && !unicode.IsLower(char) {
 			return true
 		}
-		if !unicode.IsLetter(char) {
+		if !(char == '_' || unicode.IsLetter(char) || unicode.IsDigit(char)) {
 			return true
 		}
 	}
@@ -230,6 +226,11 @@ func unmarshalTerm(bs []byte) (Term, error) {
 	return nil, fmt.Errorf("trealla: unhandled term json: %T %v", iface, iface)
 }
 
+// Marshal returns the Prolog text representation of term.
+func Marshal(term Term) (string, error) {
+	return marshal(term)
+}
+
 func marshal(term Term) (string, error) {
 	switch x := term.(type) {
 	case string:
@@ -249,22 +250,44 @@ func marshal(term Term) (string, error) {
 	case Variable:
 		return x.String(), nil
 	case []Term:
-		var sb strings.Builder
-		sb.WriteRune('[')
-		for i, t := range x {
-			if i != 0 {
-				sb.WriteString(", ")
-			}
-			text, err := marshal(t)
-			if err != nil {
-				return "", err
-			}
-			sb.WriteString(text)
-		}
-		sb.WriteRune(']')
-		return sb.String(), nil
+		return marshalSlice(x)
+	case []any:
+		return marshalSlice(x)
+	case []string:
+		return marshalSlice(x)
+	case []int64:
+		return marshalSlice(x)
+	case []int:
+		return marshalSlice(x)
+	case []float64:
+		return marshalSlice(x)
+	case []*big.Int:
+		return marshalSlice(x)
+	case []Atom:
+		return marshalSlice(x)
+	case []Compound:
+		return marshalSlice(x)
+	case []Variable:
+		return marshalSlice(x)
 	}
 	return "", fmt.Errorf("trealla: can't marshal type %T, value: %v", term, term)
+}
+
+func marshalSlice[T any](slice []T) (string, error) {
+	var sb strings.Builder
+	sb.WriteRune('[')
+	for i, v := range slice {
+		if i != 0 {
+			sb.WriteString(", ")
+		}
+		text, err := marshal(v)
+		if err != nil {
+			return "", err
+		}
+		sb.WriteString(text)
+	}
+	sb.WriteRune(']')
+	return sb.String(), nil
 }
 
 func escapeString(str string) string {

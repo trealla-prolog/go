@@ -38,6 +38,18 @@ func TestMarshal(t *testing.T) {
 			want: "'hello world'",
 		},
 		{
+			term: Atom("under_score"),
+			want: "under_score",
+		},
+		{
+			term: Atom("123"),
+			want: "'123'",
+		},
+		{
+			term: Atom("x1"),
+			want: "x1",
+		},
+		{
 			term: "string",
 			want: `"string"`,
 		},
@@ -55,6 +67,14 @@ func TestMarshal(t *testing.T) {
 		},
 		{
 			term: []Term{int64(1), int64(2)},
+			want: "[1, 2]",
+		},
+		{
+			term: []int64{int64(1), int64(2)},
+			want: "[1, 2]",
+		},
+		{
+			term: []any{int64(1), int64(2)},
 			want: "[1, 2]",
 		},
 	}

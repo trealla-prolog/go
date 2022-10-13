@@ -18,6 +18,9 @@ It's pretty fast. Not as fast as native Trealla, but pretty dang fast (2-5x slow
 go get github.com/trealla-prolog/go
 ```
 
+**Note**: the module is under `github.com/trealla-prolog/go`, **not** `[...]/go/trealla`.
+go.dev is confused about this and will pull a very old version if you try to `go get` the `trealla` package.
+
 ## Usage
 
 This library uses WebAssembly to run Trealla, executing Prolog queries in an isolated environment.
@@ -41,7 +44,7 @@ func main() {
 	for query.Next(ctx) {
 		answer := query.Current()
 		x := answer.Solution["X"]
-		fmt.Println(x) // 1, trealla.Compound{Functor: "foo", Args: [trealla.Atom("bar")]}, "c"}
+		fmt.Println(x) // 1, trealla.Compound{Functor: "foo", Args: [trealla.Atom("bar")]}, "c"
 	}
 
 	// make sure to check the query for errors
@@ -51,7 +54,66 @@ func main() {
 }
 ```
 
-### Documentation
+### Single query
+
+Use `QueryOnce` when you only want a single answer.
+
+```go
+pl := trealla.New()
+answer, err := pl.QueryOnce(ctx, "succ(41, N).")
+if err != nil {
+	panic(err)
+}
+
+fmt.Println(answer.Stdout)
+// Output: hello world
+```
+
+### Binding variables
+
+You can bind variables in the query using the `WithBind` and `WithBinding` options.
+This is a safe and convenient way to pass data into the query.
+It is OK to pass these multiple times.
+
+```go
+pl := trealla.New()
+answer, err := pl.QueryOnce(ctx, "write(X)", trealla.WithBind("X", trealla.Atom("hello world")))
+if err != nil {
+	panic(err)
+}
+
+fmt.Println(answer.Stdout)
+// Output: hello world
+```
+
+### Scanning solutions
+
+You can scan an answer's substitutions directly into a struct or map, similar to ichiban/prolog.
+
+Use the `prolog:"VariableName"` struct tag to manually specify a variable name.
+Otherwise, the field's name is used.
+
+```prolog
+answer, err := pl.QueryOnce(ctx, `X = 123, Y = abc, Z = ["hello", "world"].`)
+if err != nil {
+	panic(err)
+}
+
+var result struct {
+	X  int
+	Y  string
+	Hi []string `prolog:"Z"`
+}
+// make sure to pass a pointer to the struct!
+if err := answer.Solution.Scan(&result); err != nil {
+	panic(err)
+}
+
+fmt.Printf("%+v", result)
+// Output: {X:123 Y:abc Hi:[hello world]}
+```
+
+## Documentation
 
 See **[package trealla's documentation](https://pkg.go.dev/github.com/trealla-prolog/go#section-directories)** for more details and examples.
 

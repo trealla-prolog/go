@@ -29,7 +29,7 @@ type Query interface {
 type query struct {
 	pl       *prolog
 	goal     string
-	bind     []binding
+	bind     bindings
 	subquery int32
 
 	queue []Answer
@@ -260,18 +260,9 @@ func (q *query) reify() error {
 	}
 
 	var sb strings.Builder
-	for _, bind := range q.bind {
-		sb.WriteString(bind.name)
-		sb.WriteString(" = ")
-		v, err := marshal(bind.value)
-		if err != nil {
-			return fmt.Errorf("trealla: failed to convert bound variable to Prolog (name: %s): %w", bind.name, err)
-		}
-		sb.WriteString(v)
-		sb.WriteString(", ")
-	}
+	sb.WriteString(q.bind.String())
+	sb.WriteString(", ")
 	sb.WriteString(q.goal)
-
 	q.goal = sb.String()
 	return nil
 }
