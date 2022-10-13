@@ -1,4 +1,5 @@
 // Package trealla provides a Prolog interpreter.
+// Powered by Trealla Prolog running under WebAssembly.
 package trealla
 
 import (

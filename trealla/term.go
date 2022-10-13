@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
-	"sort"
 	"strconv"
 	"strings"
 	"unicode"
@@ -127,48 +126,6 @@ func (v Variable) String() string {
 		sb.WriteString(text)
 	}
 	return sb.String()
-}
-
-// Substitution is a mapping of variable names to substitutions (terms).
-// In other words, it's one answer to a query.
-type Substitution map[string]Term
-
-type binding struct {
-	name  string
-	value Term
-}
-
-func (sub Substitution) bindings() []binding {
-	bs := make([]binding, 0, len(sub))
-	for k, v := range sub {
-		bs = append(bs, binding{
-			name:  k,
-			value: v,
-		})
-	}
-	sort.Slice(bs, func(i, j int) bool {
-		return bs[i].name < bs[j].name
-	})
-	return bs
-}
-
-// UnmarshalJSON implements the encoding/json.Marshaler interface.
-func (sol *Substitution) UnmarshalJSON(bs []byte) error {
-	var raws map[string]json.RawMessage
-	dec := json.NewDecoder(bytes.NewReader(bs))
-	dec.UseNumber()
-	if err := dec.Decode(&raws); err != nil {
-		return err
-	}
-	*sol = make(Substitution, len(raws))
-	for k, raw := range raws {
-		term, err := unmarshalTerm(raw)
-		if err != nil {
-			return err
-		}
-		(*sol)[k] = term
-	}
-	return nil
 }
 
 func unmarshalTerm(bs []byte) (Term, error) {

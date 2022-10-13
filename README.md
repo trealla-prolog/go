@@ -12,6 +12,12 @@ It's pretty fast. Not as fast as native Trealla, but pretty dang fast (2-5x slow
 - Doesn't work on Windows ([wasmer-go issue](https://github.com/wasmerio/wasmer-go/issues/69)).
 	- Works great on WSL.
 
+## Install
+
+```bash
+go get github.com/trealla-prolog/go
+```
+
 ## Usage
 
 This library uses WebAssembly to run Trealla, executing Prolog queries in an isolated environment.
@@ -24,19 +30,30 @@ func main() {
 	// load the interpreter and (optionally) grant access to the current directory
 	pl := trealla.New(trealla.WithPreopen("."))
 	// run a query; cancel context to abort it
+	ctx := context.Background()
 	query := pl.Query(ctx, "member(X, [1, foo(bar), c]).")
+
+	// calling Close is not necessary if you iterate through the whole result set
+	// but it doesn't hurt either
+	defer query.Close() 
+
 	// iterate through answers
 	for query.Next(ctx) {
 		answer := query.Current()
 		x := answer.Solution["X"]
 		fmt.Println(x) // 1, trealla.Compound{Functor: "foo", Args: [trealla.Atom("bar")]}, "c"}
 	}
+
 	// make sure to check the query for errors
 	if err := query.Err(); err != nil {
 		panic(err)
 	}
 }
 ```
+
+### Documentation
+
+See **[package trealla's documentation](https://pkg.go.dev/github.com/trealla-prolog/go#section-directories)** for more details and examples.
 
 ## WASM Binary
 
