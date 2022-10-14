@@ -24,7 +24,7 @@ func TestQuery(t *testing.T) {
 	}
 
 	t.Run("consult", func(t *testing.T) {
-		if err := pl.Consult(context.Background(), "/testdata/greeting"); err != nil {
+		if err := pl.Consult(context.Background(), "/testdata/greeting.pl"); err != nil {
 			t.Error(err)
 		}
 	})
@@ -88,29 +88,29 @@ func TestQuery(t *testing.T) {
 			name: "member/2",
 			want: []trealla.Answer{
 				{
-					Query:    `member(X, [1,foo(bar),4.2,"baz",'boop', [q, '"'], '\\', '\n']).`,
+					Query:    `member(X, [1,foo(bar),4.2,"baz",'boop', [q, '"x'], '\\', '\n']).`,
 					Solution: trealla.Substitution{"X": int64(1)},
 				},
 				{
-					Query:    `member(X, [1,foo(bar),4.2,"baz",'boop', [q, '"'], '\\', '\n']).`,
+					Query:    `member(X, [1,foo(bar),4.2,"baz",'boop', [q, '"x'], '\\', '\n']).`,
 					Solution: trealla.Substitution{"X": trealla.Compound{Functor: "foo", Args: []trealla.Term{trealla.Atom("bar")}}}},
 				{
-					Query:    `member(X, [1,foo(bar),4.2,"baz",'boop', [q, '"'], '\\', '\n']).`,
+					Query:    `member(X, [1,foo(bar),4.2,"baz",'boop', [q, '"x'], '\\', '\n']).`,
 					Solution: trealla.Substitution{"X": 4.2}},
 				{
-					Query:    `member(X, [1,foo(bar),4.2,"baz",'boop', [q, '"'], '\\', '\n']).`,
+					Query:    `member(X, [1,foo(bar),4.2,"baz",'boop', [q, '"x'], '\\', '\n']).`,
 					Solution: trealla.Substitution{"X": "baz"}},
 				{
-					Query:    `member(X, [1,foo(bar),4.2,"baz",'boop', [q, '"'], '\\', '\n']).`,
+					Query:    `member(X, [1,foo(bar),4.2,"baz",'boop', [q, '"x'], '\\', '\n']).`,
 					Solution: trealla.Substitution{"X": trealla.Atom("boop")}},
 				{
-					Query:    `member(X, [1,foo(bar),4.2,"baz",'boop', [q, '"'], '\\', '\n']).`,
-					Solution: trealla.Substitution{"X": []trealla.Term{trealla.Atom("q"), trealla.Atom(`"`)}}},
+					Query:    `member(X, [1,foo(bar),4.2,"baz",'boop', [q, '"x'], '\\', '\n']).`,
+					Solution: trealla.Substitution{"X": []trealla.Term{trealla.Atom("q"), trealla.Atom(`"x`)}}},
 				{
-					Query:    `member(X, [1,foo(bar),4.2,"baz",'boop', [q, '"'], '\\', '\n']).`,
+					Query:    `member(X, [1,foo(bar),4.2,"baz",'boop', [q, '"x'], '\\', '\n']).`,
 					Solution: trealla.Substitution{"X": trealla.Atom(`\`)}},
 				{
-					Query:    `member(X, [1,foo(bar),4.2,"baz",'boop', [q, '"'], '\\', '\n']).`,
+					Query:    `member(X, [1,foo(bar),4.2,"baz",'boop', [q, '"x'], '\\', '\n']).`,
 					Solution: trealla.Substitution{"X": trealla.Atom("\n")}},
 			},
 		},
@@ -152,14 +152,8 @@ func TestQuery(t *testing.T) {
 							Name: "X",
 							Attr: []trealla.Term{
 								trealla.Compound{
-									Functor: ":",
-									Args: []trealla.Term{
-										trealla.Atom("dif"),
-										trealla.Compound{
-											Functor: "dif",
-											Args:    []trealla.Term{trealla.Variable{Name: "X"}, trealla.Variable{Name: "Y"}},
-										},
-									},
+									Functor: "dif",
+									Args:    []trealla.Term{trealla.Variable{Name: "X"}, trealla.Variable{Name: "Y"}},
 								},
 							},
 						},
@@ -167,14 +161,8 @@ func TestQuery(t *testing.T) {
 							Name: "Y",
 							Attr: []trealla.Term{
 								trealla.Compound{
-									Functor: ":",
-									Args: []trealla.Term{
-										trealla.Atom("dif"),
-										trealla.Compound{
-											Functor: "dif",
-											Args:    []trealla.Term{trealla.Variable{Name: "X"}, trealla.Variable{Name: "Y"}},
-										},
-									},
+									Functor: "dif",
+									Args:    []trealla.Term{trealla.Variable{Name: "X"}, trealla.Variable{Name: "Y"}},
 								},
 							},
 						},
