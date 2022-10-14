@@ -50,7 +50,20 @@ func TestQuery(t *testing.T) {
 					Query: `false.`,
 				},
 			},
-			err: trealla.ErrFailure,
+			err: trealla.ErrFailure{Query: "false."},
+		},
+		{
+			name: "failure with output",
+			want: []trealla.Answer{
+				{
+					Query: `write(foo), write(user_error, bar), fail.`,
+				},
+			},
+			err: trealla.ErrFailure{
+				Query:  "write(foo), write(user_error, bar), fail.",
+				Stdout: "foo",
+				Stderr: "bar",
+			},
 		},
 		{
 			name: "write to stdout",
@@ -213,7 +226,7 @@ func TestQuery(t *testing.T) {
 			if tc.err == nil && err != nil {
 				t.Fatal(err)
 			} else if tc.err != nil && !errors.Is(err, tc.err) {
-				t.Error("unexpected error:", err)
+				t.Errorf("unexpected error: %#v (%v) ", err, err)
 			}
 			if tc.err == nil && !reflect.DeepEqual(ans, tc.want) {
 				t.Errorf("bad answer. \nwant: %#v\ngot: %#v\n", tc.want, ans)
@@ -230,7 +243,7 @@ func TestThrow(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	q := pl.Query(ctx, `throw(ball).`)
+	q := pl.Query(ctx, `write(hello), throw(ball).`)
 	if q.Next(ctx) {
 		t.Error("unexpected result", q.Current())
 	}
@@ -243,6 +256,9 @@ func TestThrow(t *testing.T) {
 
 	if ex.Ball != trealla.Atom("ball") {
 		t.Error(`unexpected error value. want: "ball" got:`, ex.Ball)
+	}
+	if ex.Stdout != "hello" {
+		t.Error("unexpected stdout:", ex.Stdout)
 	}
 }
 

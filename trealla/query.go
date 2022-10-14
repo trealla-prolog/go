@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"runtime"
 	"strings"
@@ -174,7 +173,7 @@ func (q *query) redo(ctx context.Context) bool {
 		stderr := string(pl.wasi.ReadStderr())
 		ans, err := newAnswer(q.goal, stdout, stderr)
 		switch {
-		case errors.Is(err, ErrFailure):
+		case IsFailure(err):
 			return false
 		case err != nil:
 			q.setError(err)

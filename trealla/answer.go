@@ -25,9 +25,9 @@ type response struct {
 	Error  json.RawMessage // ball
 }
 
-func newAnswer(program, stdout, stderr string) (Answer, error) {
+func newAnswer(goal, stdout, stderr string) (Answer, error) {
 	if len(strings.TrimSpace(stdout)) == 0 {
-		return Answer{}, ErrFailure
+		return Answer{}, ErrFailure{Query: goal, Stderr: stderr}
 	}
 
 	start := strings.IndexRune(stdout, stx)
@@ -46,7 +46,7 @@ func newAnswer(program, stdout, stderr string) (Answer, error) {
 
 	resp := response{
 		Answer: Answer{
-			Query:  program,
+			Query:  goal,
 			Stdout: output,
 			Stderr: stderr,
 		},
@@ -62,13 +62,13 @@ func newAnswer(program, stdout, stderr string) (Answer, error) {
 	case statusSuccess:
 		return resp.Answer, nil
 	case statusFailure:
-		return resp.Answer, ErrFailure
+		return resp.Answer, ErrFailure{Query: goal, Stdout: output, Stderr: stderr}
 	case statusError:
 		ball, err := unmarshalTerm(resp.Error)
 		if err != nil {
 			return resp.Answer, err
 		}
-		return resp.Answer, ErrThrow{Ball: ball}
+		return resp.Answer, ErrThrow{Query: goal, Ball: ball, Stdout: output, Stderr: stderr}
 	default:
 		return resp.Answer, fmt.Errorf("trealla: unexpected query status: %v", resp.Result)
 	}
