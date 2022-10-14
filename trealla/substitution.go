@@ -87,7 +87,8 @@ func (sub Substitution) bindings() bindings {
 }
 
 func scan(sub Substitution, rv reflect.Value) error {
-	if rv.Kind() == reflect.Map {
+	switch rv.Kind() {
+	case reflect.Map:
 		vtype := rv.Type().Elem()
 		for k, v := range sub {
 			vv := reflect.ValueOf(v)
@@ -97,11 +98,10 @@ func scan(sub Substitution, rv reflect.Value) error {
 			rv.SetMapIndex(reflect.ValueOf(k), vv.Convert(vtype))
 		}
 		return nil
-	}
-
-	switch rv.Kind() {
 	case reflect.Pointer:
 		rv = rv.Elem()
+		// we can't set the inner elements of *map and *interface directly,
+		// so they need to be swapped out with a new inner value
 		switch rv.Kind() {
 		case reflect.Map:
 			ev := reflect.MakeMap(rv.Type())

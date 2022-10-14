@@ -44,6 +44,35 @@ func TestQuery(t *testing.T) {
 			},
 		},
 		{
+			name: "false/0",
+			want: []trealla.Answer{
+				{
+					Query: `false.`,
+				},
+			},
+			err: trealla.ErrFailure,
+		},
+		{
+			name: "write to stdout",
+			want: []trealla.Answer{
+				{
+					Query:    `write(hello), nl.`,
+					Solution: trealla.Substitution{},
+					Stdout:   "hello\n",
+				},
+			},
+		},
+		{
+			name: "write to stderr",
+			want: []trealla.Answer{
+				{
+					Query:    `write(user_error, hello).`,
+					Solution: trealla.Substitution{},
+					Stderr:   "hello",
+				},
+			},
+		},
+		{
 			name: "consulted",
 			want: []trealla.Answer{
 				{
@@ -113,15 +142,6 @@ func TestQuery(t *testing.T) {
 					Query:    `member(X, [1,foo(bar),4.2,"baz",'boop', [q, '"x'], '\\', '\n']).`,
 					Solution: trealla.Substitution{"X": trealla.Atom("\n")}},
 			},
-		},
-		{
-			name: "false/0",
-			want: []trealla.Answer{
-				{
-					Query: `false.`,
-				},
-			},
-			err: trealla.ErrFailure,
 		},
 		{
 			name: "tak & WithLibraryPath",

@@ -41,6 +41,10 @@ func TestScan(t *testing.T) {
 			want: struct{ X Atom }{X: ""},
 		},
 		{
+			sub:  Substitution{"X": []Term{}},
+			want: struct{ X, Y []Term }{X: []Term{}},
+		},
+		{
 			sub:  Substitution{"X": "x", "Y": "y"},
 			want: map[string]any{"X": "x", "Y": "y"},
 		},
