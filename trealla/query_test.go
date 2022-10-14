@@ -127,7 +127,7 @@ func TestQuery(t *testing.T) {
 			name: "tak & WithLibraryPath",
 			want: []trealla.Answer{
 				{
-					Query:    "use_module(library(tak)), run",
+					Query:    "use_module(library(tak)), run.",
 					Solution: trealla.Substitution{},
 					Stdout:   "'<https://josd.github.io/eye/ns#tak>'([34,13,8],13).\n",
 				},
@@ -137,8 +137,17 @@ func TestQuery(t *testing.T) {
 			name: "bigint",
 			want: []trealla.Answer{
 				{
-					Query:    "X=9999999999999999, Y = -9999999999999999, Z = 123",
+					Query:    "X=9999999999999999, Y = -9999999999999999, Z = 123.",
 					Solution: trealla.Substitution{"X": big.NewInt(9999999999999999), "Y": big.NewInt(-9999999999999999), "Z": int64(123)},
+				},
+			},
+		},
+		{
+			name: "empty list",
+			want: []trealla.Answer{
+				{
+					Query:    "X = [].",
+					Solution: trealla.Substitution{"X": []trealla.Term{}},
 				},
 			},
 		},

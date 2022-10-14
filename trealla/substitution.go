@@ -161,6 +161,12 @@ func scan(sub Substitution, rv reflect.Value) error {
 				continue
 			}
 
+			// handle the empty string (rendered as [], the empty list)
+			if fv.Kind() == reflect.String && vv.Kind() == reflect.Slice && vv.Len() == 0 {
+				fv.SetString("")
+				continue
+			}
+
 			if !vv.CanConvert(ftype) {
 				return fmt.Errorf("trealla: can't convert %s (value: %v) to type: %v", k, v, ftype)
 			}

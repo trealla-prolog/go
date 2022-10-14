@@ -280,7 +280,8 @@ func (q *query) Err() error {
 }
 
 func escapeQuery(query string) string {
-	return fmt.Sprintf(`js_ask(%s)`, escapeString(query))
+	query = queryEscaper.Replace(query)
+	return fmt.Sprintf(`js_ask(%s).`, escapeString(query))
 }
 
 func finalize(q *query) {
@@ -308,5 +309,7 @@ func WithBinding(subs Substitution) QueryOption {
 		}
 	}
 }
+
+var queryEscaper = strings.NewReplacer("\t", " ", "\n", " ", "\r", "")
 
 var _ Query = (*query)(nil)

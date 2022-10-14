@@ -46,6 +46,19 @@ func (a Atom) Of(args ...Term) Compound {
 	}
 }
 
+func (a *Atom) UnmarshalJSON(text []byte) error {
+	if string(text) == "[]" {
+		*a = ""
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(text, &s); err != nil {
+		return err
+	}
+	*a = Atom(s)
+	return nil
+}
+
 func (a Atom) needsEscape() bool {
 	if len(a) == 0 {
 		return true
