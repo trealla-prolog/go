@@ -93,7 +93,7 @@ You can scan an answer's substitutions directly into a struct or map, similar to
 Use the `prolog:"VariableName"` struct tag to manually specify a variable name.
 Otherwise, the field's name is used.
 
-```prolog
+```go
 answer, err := pl.QueryOnce(ctx, `X = 123, Y = abc, Z = ["hello", "world"].`)
 if err != nil {
 	panic(err)
