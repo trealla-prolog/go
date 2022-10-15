@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"math/big"
 	"os"
 	"reflect"
@@ -18,7 +19,7 @@ func TestQuery(t *testing.T) {
 		testdata = "./trealla/testdata"
 	}
 
-	pl, err := trealla.New(trealla.WithMapDir("testdata", testdata), trealla.WithLibraryPath("/testdata"))
+	pl, err := trealla.New(trealla.WithMapDir("testdata", testdata), trealla.WithLibraryPath("/testdata"), trealla.WithDebugLog(log.Default()))
 	if err != nil {
 		t.Fatal(err)
 	}

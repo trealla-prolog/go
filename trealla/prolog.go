@@ -4,17 +4,12 @@ package trealla
 
 import (
 	"context"
-	_ "embed"
 	"fmt"
+	"log"
 	"sync"
 
 	"github.com/wasmerio/wasmer-go/wasmer"
 )
-
-//go:embed tpl.wasm
-var tplWASM []byte
-
-var wasmEngine = wasmer.NewEngine()
 
 // Prolog is a Prolog interpreter.
 type Prolog interface {
@@ -26,12 +21,7 @@ type Prolog interface {
 	Consult(ctx context.Context, filename string) error
 }
 
-type wasmFunc func(...any) (any, error)
-
 type prolog struct {
-	engine   *wasmer.Engine
-	store    *wasmer.Store
-	module   *wasmer.Module
 	instance *wasmer.Instance
 	wasi     *wasmer.WasiEnvironment
 	memory   *wasmer.Memory
@@ -47,47 +37,41 @@ type prolog struct {
 	preopen string
 	dirs    map[string]string
 	library string
+	trace   bool
+	quiet   bool
+
+	stdout *log.Logger
+	stderr *log.Logger
+	debug  *log.Logger
 
 	mu *sync.Mutex
 }
 
 // New creates a new Prolog interpreter.
 func New(opts ...Option) (Prolog, error) {
-	pl, err := newProlog(opts...)
-	if err != nil {
-		return nil, err
-	}
-	return pl, nil
-}
-
-func newProlog(opts ...Option) (*prolog, error) {
-	store := wasmer.NewStore(wasmEngine)
-	module, err := wasmer.NewModule(store, tplWASM)
-	if err != nil {
-		return nil, err
-	}
 	pl := &prolog{
-		engine: wasmEngine,
-		store:  store,
-		module: module,
-		mu:     new(sync.Mutex),
+		mu: new(sync.Mutex),
 	}
 	for _, opt := range opts {
 		opt(pl)
 	}
-	err = pl.init()
-	return pl, err
+	return pl, pl.init()
 }
 
 func (pl *prolog) init() error {
 	builder := wasmer.NewWasiStateBuilder("tpl").
 		Argument("-g").Argument("halt").
-		Argument("-q").
 		Argument("--ns").
 		CaptureStdout().
 		CaptureStderr()
 	if pl.library != "" {
 		builder = builder.Argument("--library").Argument(pl.library)
+	}
+	if pl.trace {
+		builder = builder.Argument("-t")
+	}
+	if pl.quiet {
+		builder = builder.Argument("-q")
 	}
 	if pl.preopen != "" {
 		builder = builder.PreopenDirectory(pl.preopen)
@@ -100,18 +84,19 @@ func (pl *prolog) init() error {
 		return fmt.Errorf("trealla: failed to init WASI: %w", err)
 	}
 	pl.wasi = wasiEnv
-	importObject, err := wasiEnv.GenerateImportObject(pl.store, pl.module)
+	importObject, err := wasiEnv.GenerateImportObject(wasmStore, wasmModule)
 	if err != nil {
 		return err
 	}
 
-	instance, err := wasmer.NewInstance(pl.module, importObject)
+	instance, err := wasmer.NewInstance(wasmModule, importObject)
 	if err != nil {
 		return err
 	}
 	pl.instance = instance
 
 	// run once to initialize global interpreter
+
 	start, err := instance.Exports.GetWasiStartFunction()
 	if err != nil {
 		return err
@@ -223,5 +208,43 @@ func WithMapDir(alias, dir string) Option {
 func WithLibraryPath(path string) Option {
 	return func(pl *prolog) {
 		pl.library = path
+	}
+}
+
+// WithTrace enables tracing for all queries. Traces write to to the query's standard error text stream.
+// You can also use the `trace/0` predicate to enable tracing for specific queries.
+// Use together with WithStderrLog for automatic tracing.
+func WithTrace() Option {
+	return func(pl *prolog) {
+		pl.trace = true
+	}
+}
+
+// WithQuiet enables the quiet option. This disables some warning messages.
+func WithQuiet() Option {
+	return func(pl *prolog) {
+		pl.quiet = true
+	}
+}
+
+// WithStdoutLog sets the standard output logger, writing all stdout input from queries.
+func WithStdoutLog(logger *log.Logger) Option {
+	return func(pl *prolog) {
+		pl.stdout = logger
+	}
+}
+
+// WithStderrLog sets the standard error logger, writing all stderr input from queries.
+// Note that traces are written to stderr.
+func WithStderrLog(logger *log.Logger) Option {
+	return func(pl *prolog) {
+		pl.stderr = logger
+	}
+}
+
+// WithDebugLog writes debug messages to the given logger.
+func WithDebugLog(logger *log.Logger) Option {
+	return func(pl *prolog) {
+		pl.debug = logger
 	}
 }

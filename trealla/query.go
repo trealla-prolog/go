@@ -80,6 +80,10 @@ func (pl *prolog) start(ctx context.Context, goal string, options ...QueryOption
 		return q
 	}
 
+	if pl.debug != nil {
+		pl.debug.Println("query:", q.goal)
+	}
+
 	subqptrv, err := pl.realloc(0, 0, 1, 4)
 	if err != nil {
 		q.setError(err)
@@ -126,7 +130,7 @@ func (pl *prolog) start(ctx context.Context, goal string, options ...QueryOption
 
 		stdout := string(pl.wasi.ReadStdout())
 		stderr := string(pl.wasi.ReadStderr())
-		ans, err := newAnswer(q.goal, stdout, stderr)
+		ans, err := pl.parse(q.goal, stdout, stderr)
 		if err == nil {
 			q.push(ans)
 		} else {
@@ -139,6 +143,10 @@ func (pl *prolog) start(ctx context.Context, goal string, options ...QueryOption
 func (q *query) redo(ctx context.Context) bool {
 	q.pl.mu.Lock()
 	defer q.pl.mu.Unlock()
+
+	if q.pl.debug != nil {
+		q.pl.debug.Println("redo:", q.subquery)
+	}
 
 	pl := q.pl
 	ch := make(chan error, 2)
@@ -171,7 +179,7 @@ func (q *query) redo(ctx context.Context) bool {
 
 		stdout := string(pl.wasi.ReadStdout())
 		stderr := string(pl.wasi.ReadStderr())
-		ans, err := newAnswer(q.goal, stdout, stderr)
+		ans, err := pl.parse(q.goal, stdout, stderr)
 		switch {
 		case IsFailure(err):
 			return false

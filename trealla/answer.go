@@ -25,7 +25,7 @@ type response struct {
 	Error  json.RawMessage // ball
 }
 
-func newAnswer(goal, stdout, stderr string) (Answer, error) {
+func (pl *prolog) parse(goal, stdout, stderr string) (Answer, error) {
 	if len(strings.TrimSpace(stdout)) == 0 {
 		return Answer{}, ErrFailure{Query: goal, Stderr: stderr}
 	}
@@ -43,6 +43,16 @@ func newAnswer(goal, stdout, stderr string) (Answer, error) {
 
 	output := stdout[start+1 : end]
 	js := stdout[end+1 : butt]
+
+	if pl.stdout != nil {
+		pl.stdout.Println(output)
+	}
+	if pl.stderr != nil {
+		pl.stderr.Println(stderr)
+	}
+	if pl.debug != nil {
+		pl.debug.Println(string(js))
+	}
 
 	resp := response{
 		Answer: Answer{

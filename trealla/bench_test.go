@@ -32,11 +32,8 @@ func BenchmarkTak(b *testing.B) {
 	ctx := context.Background()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		q := pl.Query(ctx, "consult('testdata/tak'), run")
-		if !q.Next(ctx) {
-			b.Fatal("no answer")
-		}
-		if q.Err() != nil {
+		_, err := pl.QueryOnce(ctx, "consult('testdata/tak'), run")
+		if err != nil {
 			b.Fatal(err)
 		}
 	}
