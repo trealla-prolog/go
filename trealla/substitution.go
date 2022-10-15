@@ -21,20 +21,20 @@ func (sub Substitution) String() string {
 }
 
 // UnmarshalJSON implements the encoding/json.Marshaler interface.
-func (sol *Substitution) UnmarshalJSON(bs []byte) error {
+func (sub *Substitution) UnmarshalJSON(bs []byte) error {
 	var raws map[string]json.RawMessage
 	dec := json.NewDecoder(bytes.NewReader(bs))
 	dec.UseNumber()
 	if err := dec.Decode(&raws); err != nil {
 		return err
 	}
-	*sol = make(Substitution, len(raws))
+	*sub = make(Substitution, len(raws))
 	for k, raw := range raws {
 		term, err := unmarshalTerm(raw)
 		if err != nil {
 			return err
 		}
-		(*sol)[k] = term
+		(*sub)[k] = term
 	}
 	return nil
 }
