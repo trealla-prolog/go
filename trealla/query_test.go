@@ -186,6 +186,15 @@ func TestQuery(t *testing.T) {
 			},
 		},
 		{
+			name: "empty atom",
+			want: []trealla.Answer{
+				{
+					Query:    "X = foo(bar, '').",
+					Solution: trealla.Substitution{"X": trealla.Compound{Functor: "foo", Args: []trealla.Term{trealla.Atom("bar"), trealla.Atom("")}}},
+				},
+			},
+		},
+		{
 			name: "residual goals",
 			want: []trealla.Answer{
 				{
