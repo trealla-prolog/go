@@ -42,6 +42,10 @@ func (err ErrThrow) Error() string {
 	return fmt.Sprintf("trealla: exception thrown: %v", err.Ball)
 }
 
+func errUnexported(symbol string, err error) error {
+	return fmt.Errorf("trealla: failed to get exported function: %s: error: %w", symbol, err)
+}
+
 var (
 	_ error = ErrFailure{}
 	_ error = ErrThrow{}

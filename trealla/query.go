@@ -86,10 +86,14 @@ func (pl *prolog) start(ctx context.Context, goal string, options ...QueryOption
 
 	subqptrv, err := pl.realloc(0, 0, 1, 4)
 	if err != nil {
-		q.setError(err)
+		q.setError(fmt.Errorf("trealla: allocation error: %w", err))
 		return q
 	}
 	subqptr := subqptrv.(int32)
+	if subqptr == 0 {
+		q.setError(fmt.Errorf("trealla: failed to allocate subquery pointer"))
+		return q
+	}
 	defer pl.free(subqptr, 4, 1)
 
 	ch := make(chan error, 2)
@@ -117,7 +121,7 @@ func (pl *prolog) start(ctx context.Context, goal string, options ...QueryOption
 	case err := <-ch:
 		q.done = ret == 0
 		if err != nil {
-			q.setError(err)
+			q.setError(fmt.Errorf("trealla: query error: %w", err))
 			return q
 		}
 
@@ -134,7 +138,7 @@ func (pl *prolog) start(ctx context.Context, goal string, options ...QueryOption
 		if err == nil {
 			q.push(ans)
 		} else {
-			q.setError(err)
+			q.setError(fmt.Errorf("trealla: failed to parse query response: %w", err))
 		}
 		return q
 	}
@@ -173,7 +177,7 @@ func (q *query) redo(ctx context.Context) bool {
 	case err := <-ch:
 		q.done = ret == 0
 		if err != nil {
-			q.setError(err)
+			q.setError(fmt.Errorf("trealla: query error: %w", err))
 			return false
 		}
 
@@ -184,7 +188,7 @@ func (q *query) redo(ctx context.Context) bool {
 		case IsFailure(err):
 			return false
 		case err != nil:
-			q.setError(err)
+			q.setError(fmt.Errorf("trealla: failed to parse query response: %w", err))
 			return false
 		}
 		q.push(ans)

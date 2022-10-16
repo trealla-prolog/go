@@ -84,6 +84,7 @@ func (pl *prolog) init() error {
 		return fmt.Errorf("trealla: failed to init WASI: %w", err)
 	}
 	pl.wasi = wasiEnv
+
 	importObject, err := wasiEnv.GenerateImportObject(wasmStore, wasmModule)
 	if err != nil {
 		return err
@@ -99,7 +100,7 @@ func (pl *prolog) init() error {
 
 	start, err := instance.Exports.GetWasiStartFunction()
 	if err != nil {
-		return err
+		return fmt.Errorf("trealla: failed to get start function: %w", err)
 	}
 	if _, err := start(); err != nil {
 		return fmt.Errorf("trealla: failed to initialize: %w", err)
@@ -107,55 +108,50 @@ func (pl *prolog) init() error {
 
 	mem, err := instance.Exports.GetMemory("memory")
 	if err != nil {
-		return err
+		return fmt.Errorf("trealla: failed to get memory: %w", err)
 	}
 	pl.memory = mem
 
 	pl_global, err := instance.Exports.GetFunction("pl_global")
 	if err != nil {
-		return err
+		return errUnexported("pl_global", err)
 	}
+
 	ptr, err := pl_global()
 	if err != nil {
-		return err
+		return fmt.Errorf("trealla: failed to get interpreter: %w", err)
 	}
 	pl.ptr = ptr.(int32)
 
-	realloc, err := instance.Exports.GetFunction("canonical_abi_realloc")
+	pl.realloc, err = instance.Exports.GetFunction("canonical_abi_realloc")
 	if err != nil {
-		return err
+		return errUnexported("canonical_abi_realloc", err)
 	}
-	pl.realloc = realloc
 
-	free, err := instance.Exports.GetFunction("canonical_abi_free")
+	pl.free, err = instance.Exports.GetFunction("canonical_abi_free")
 	if err != nil {
-		return err
+		return errUnexported("canonical_abi_free", err)
 	}
-	pl.free = free
 
-	pl_query, err := instance.Exports.GetFunction("pl_query")
+	pl.pl_query, err = instance.Exports.GetFunction("pl_query")
 	if err != nil {
-		return err
+		return errUnexported("pl_query", err)
 	}
-	pl.pl_query = pl_query
 
-	pl_redo, err := instance.Exports.GetFunction("pl_redo")
+	pl.pl_redo, err = instance.Exports.GetFunction("pl_redo")
 	if err != nil {
-		return err
+		return errUnexported("pl_redo", err)
 	}
-	pl.pl_redo = pl_redo
 
-	pl_done, err := instance.Exports.GetFunction("pl_done")
+	pl.pl_done, err = instance.Exports.GetFunction("pl_done")
 	if err != nil {
-		return err
+		return errUnexported("pl_done", err)
 	}
-	pl.pl_done = pl_done
 
-	pl_consult, err := instance.Exports.GetFunction("pl_consult")
+	pl.pl_consult, err = instance.Exports.GetFunction("pl_consult")
 	if err != nil {
-		return err
+		return errUnexported("pl_consult", err)
 	}
-	pl.pl_consult = pl_consult
 
 	return nil
 }
