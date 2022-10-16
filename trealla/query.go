@@ -31,10 +31,10 @@ type query struct {
 	bind     bindings
 	subquery int32
 
-	queue []Answer
-	cur   Answer
-	err   error
-	done  bool
+	cur  Answer
+	next *Answer
+	err  error
+	done bool
 
 	mu *sync.Mutex
 }
@@ -220,15 +220,15 @@ func (q *query) Next(ctx context.Context) bool {
 }
 
 func (q *query) push(a Answer) {
-	q.queue = append(q.queue, a)
+	q.next = &a
 }
 
 func (q *query) pop() bool {
-	if len(q.queue) == 0 {
+	if q.next == nil {
 		return false
 	}
-	q.cur = q.queue[0]
-	q.queue = q.queue[1:]
+	q.cur = *q.next
+	q.next = nil
 	return true
 }
 

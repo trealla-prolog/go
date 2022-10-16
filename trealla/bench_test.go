@@ -24,6 +24,23 @@ func BenchmarkQuery(b *testing.B) {
 	}
 }
 
+func BenchmarkRedo(b *testing.B) {
+	pl, err := New()
+	if err != nil {
+		b.Fatal(err)
+	}
+	ctx := context.Background()
+	q := pl.Query(ctx, "repeat.")
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		q.Next(ctx)
+		if q.Err() != nil {
+			b.Fatal(err)
+		}
+	}
+	q.Close()
+}
+
 func BenchmarkTak(b *testing.B) {
 	pl, err := New(WithPreopenDir("testdata"))
 	if err != nil {
