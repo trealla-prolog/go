@@ -138,12 +138,7 @@ func (pl *prolog) start(ctx context.Context, goal string, options ...QueryOption
 		if err == nil {
 			q.push(ans)
 		} else {
-			if IsFailure(err) {
-				q.setError(err)
-			} else {
-				q.setError(fmt.Errorf("trealla: failed to parse query response: %w", err))
-			}
-
+			q.setError(err)
 		}
 		return q
 	}
@@ -193,12 +188,7 @@ func (q *query) redo(ctx context.Context) bool {
 		case IsFailure(err):
 			return false
 		case err != nil:
-			if !IsFailure(err) {
-				q.setError(fmt.Errorf("trealla: failed to parse query response: %w", err))
-			} else {
-				q.setError(err)
-			}
-
+			q.setError(err)
 			return false
 		}
 		q.push(ans)
