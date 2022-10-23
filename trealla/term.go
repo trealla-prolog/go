@@ -13,13 +13,13 @@ import (
 // Term is a Prolog term.
 //
 // One of the following types:
-//	- string
-//	- int64
-//	- float64
-//	- *big.Int
-//  - Atom
-// 	- Compound
-//	- Variable
+//   - string
+//   - int64
+//   - float64
+//   - *big.Int
+//   - Atom
+//   - Compound
+//   - Variable
 type Term any
 
 // Atom is a Prolog atom.
@@ -35,7 +35,11 @@ func (a Atom) String() string {
 
 // Indicator returns a predicate indicator for this atom ("foo/0").
 func (a Atom) Indicator() string {
-	return fmt.Sprintf("%s/0", a.String())
+	return a.pi().String()
+}
+
+func (a Atom) pi() Compound {
+	return Atom("/").Of(a, int64(0))
 }
 
 // Of returns a Compound term with this atom as the principal functor.
@@ -85,7 +89,11 @@ type Compound struct {
 
 // Indicator returns the procedure indicator of this compound in Functor/Arity format.
 func (c Compound) Indicator() string {
-	return fmt.Sprintf("%s/%d", c.Functor.String(), len(c.Args))
+	return c.pi().String()
+}
+
+func (c Compound) pi() Compound {
+	return piTerm(c.Functor, len(c.Args))
 }
 
 // String returns a Prolog representation of this Compound.
@@ -95,6 +103,26 @@ func (c Compound) String() string {
 	}
 
 	var buf strings.Builder
+
+	// special case these two operators for now?
+	if len(c.Args) == 2 {
+		switch c.Functor {
+		case "/", ":":
+			left, err := marshal(c.Args[0])
+			if err != nil {
+				buf.WriteString(fmt.Sprintf("<invalid: %v>", err))
+			}
+			buf.WriteString(left)
+			buf.WriteString(string(c.Functor))
+			right, err := marshal(c.Args[1])
+			if err != nil {
+				buf.WriteString(fmt.Sprintf("<invalid: %v>", err))
+			}
+			buf.WriteString(right)
+			return buf.String()
+		}
+	}
+
 	buf.WriteString(c.Functor.String())
 	buf.WriteRune('(')
 	for i, arg := range c.Args {
@@ -110,6 +138,16 @@ func (c Compound) String() string {
 	}
 	buf.WriteRune(')')
 	return buf.String()
+}
+
+func piTerm(functor Atom, arity int) Compound {
+	return Compound{Functor: "/", Args: []Term{functor, int64(arity)}}
+}
+
+type atomic interface {
+	Term
+	Indicator() string
+	pi() Compound
 }
 
 // Variable is an unbound Prolog variable.
@@ -307,5 +345,5 @@ func escapeString(str string) string {
 	return `"` + stringEscaper.Replace(str) + `"`
 }
 
-var stringEscaper = strings.NewReplacer(`\`, `\\`, `"`, `\"`)
+var stringEscaper = strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", `\n`, "\t", `\t`)
 var atomEscaper = strings.NewReplacer(`\`, `\\`, `'`, `\'`)

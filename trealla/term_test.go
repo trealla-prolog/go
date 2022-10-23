@@ -63,7 +63,7 @@ func TestMarshal(t *testing.T) {
 		},
 		{
 			term: Variable{Name: "X", Attr: []Term{Compound{Functor: ":", Args: []Term{Atom("dif"), Compound{Functor: "dif", Args: []Term{Variable{Name: "X"}, Variable{Name: "Y"}}}}}}},
-			want: "':'(dif, dif(X, Y))",
+			want: "dif:dif(X, Y)",
 		},
 		{
 			term: []Term{int64(1), int64(2)},
@@ -76,6 +76,10 @@ func TestMarshal(t *testing.T) {
 		{
 			term: []any{int64(1), int64(2)},
 			want: "[1, 2]",
+		},
+		{
+			term: Atom("/").Of(Atom("foo"), 1),
+			want: "foo/1",
 		},
 	}
 

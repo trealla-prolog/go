@@ -1,6 +1,8 @@
 package trealla
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type cstring struct {
 	ptr  int32
@@ -38,4 +40,14 @@ func (str *cstring) free(pl *prolog) error {
 	str.ptr = 0
 	str.size = 0
 	return err
+}
+
+func (pl *prolog) gets(addr, size int32) (string, error) {
+	data := pl.memory.Data()
+	ptr := int(addr)
+	end := int(addr + size)
+	if end >= len(data) {
+		return "", fmt.Errorf("invalid string of %d length at: %d", size, addr)
+	}
+	return string(data[ptr:end]), nil
 }

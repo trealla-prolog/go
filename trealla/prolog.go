@@ -34,6 +34,8 @@ type prolog struct {
 	pl_redo    wasmFunc
 	pl_done    wasmFunc
 
+	procs map[string]procedure
+
 	preopen string
 	dirs    map[string]string
 	library string
@@ -50,7 +52,8 @@ type prolog struct {
 // New creates a new Prolog interpreter.
 func New(opts ...Option) (Prolog, error) {
 	pl := &prolog{
-		mu: new(sync.Mutex),
+		procs: make(map[string]procedure),
+		mu:    new(sync.Mutex),
 	}
 	for _, opt := range opts {
 		opt(pl)
@@ -60,7 +63,7 @@ func New(opts ...Option) (Prolog, error) {
 
 func (pl *prolog) init() error {
 	builder := wasmer.NewWasiStateBuilder("tpl").
-		Argument("-g").Argument("halt").
+		Argument("-g").Argument("use_module(user), halt").
 		Argument("--ns").
 		CaptureStdout().
 		CaptureStderr()
@@ -89,6 +92,7 @@ func (pl *prolog) init() error {
 	if err != nil {
 		return err
 	}
+	importObject.Register("trealla", pl.exports())
 
 	instance, err := wasmer.NewInstance(wasmModule, importObject)
 	if err != nil {
@@ -153,7 +157,18 @@ func (pl *prolog) init() error {
 		return errUnexported("pl_consult", err)
 	}
 
+	if err := pl.loadBuiltins(); err != nil {
+		return fmt.Errorf("trealla: failed to load builtins: %w", err)
+	}
+
 	return nil
+}
+
+func (pl *prolog) consultText(module, text string) error {
+	// Module:'$load_chars'(Text).
+	goal := Atom(":").Of(Atom(module), Atom("$load_chars").Of(text))
+	_, err := pl.QueryOnce(context.Background(), goal.String())
+	return err
 }
 
 func (pl *prolog) Consult(_ context.Context, filename string) error {
