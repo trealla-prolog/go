@@ -36,7 +36,8 @@ type query struct {
 	err  error
 	done bool
 
-	mu *sync.Mutex
+	lock bool
+	mu   *sync.Mutex
 }
 
 // Query executes a query, returning an iterator for results.
@@ -57,17 +58,18 @@ func (pl *prolog) QueryOnce(ctx context.Context, goal string, options ...QueryOp
 }
 
 func (pl *prolog) start(ctx context.Context, goal string, options ...QueryOption) *query {
-	pl.mu.Lock()
-	defer pl.mu.Unlock()
-
 	q := &query{
 		pl:   pl,
 		goal: goal,
+		lock: true,
 		mu:   new(sync.Mutex),
 	}
-
 	for _, opt := range options {
 		opt(q)
+	}
+	if q.lock {
+		pl.mu.Lock()
+		defer pl.mu.Unlock()
 	}
 
 	if err := q.reify(); err != nil {
@@ -126,10 +128,12 @@ func (pl *prolog) start(ctx context.Context, goal string, options ...QueryOption
 		}
 
 		// grab subquery pointer
-		buf := bytes.NewBuffer(pl.memory.Data()[subqptr : subqptr+4])
-		if err := binary.Read(buf, binary.LittleEndian, &q.subquery); err != nil {
-			q.setError(fmt.Errorf("trealla: couldn't read subquery pointer: %w", err))
-			return q
+		if !q.done {
+			buf := bytes.NewBuffer(pl.memory.Data()[subqptr : subqptr+4])
+			if err := binary.Read(buf, binary.LittleEndian, &q.subquery); err != nil {
+				q.setError(fmt.Errorf("trealla: couldn't read subquery pointer: %w", err))
+				return q
+			}
 		}
 
 		stdout := string(pl.wasi.ReadStdout())
@@ -145,11 +149,13 @@ func (pl *prolog) start(ctx context.Context, goal string, options ...QueryOption
 }
 
 func (q *query) redo(ctx context.Context) bool {
-	q.pl.mu.Lock()
-	defer q.pl.mu.Unlock()
+	if q.lock {
+		q.pl.mu.Lock()
+		defer q.pl.mu.Unlock()
+	}
 
 	if q.pl.debug != nil {
-		q.pl.debug.Println("redo:", q.subquery)
+		q.pl.debug.Println("redo:", q.goal, q.subquery)
 	}
 
 	pl := q.pl
@@ -243,11 +249,16 @@ func (q *query) Close() error {
 	defer q.mu.Unlock()
 
 	if !q.done && q.subquery != 0 {
-		q.pl.mu.Lock()
+		if q.lock {
+			q.pl.mu.Lock()
+		}
 		q.pl.pl_done(q.subquery)
-		q.pl.mu.Unlock()
-		q.done = true
+		if q.lock {
+			q.pl.mu.Unlock()
+		}
 	}
+
+	q.done = true
 	return nil
 }
 
@@ -319,6 +330,10 @@ func WithBinding(subs Substitution) QueryOption {
 			q.bindVar(bind.name, bind.value)
 		}
 	}
+}
+
+func withoutLock(q *query) {
+	q.lock = false
 }
 
 var queryEscaper = strings.NewReplacer("\t", " ", "\n", " ", "\r", "")

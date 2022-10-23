@@ -175,6 +175,18 @@ func (v Variable) String() string {
 	return sb.String()
 }
 
+func numbervars(n int) []Term {
+	vars := make([]Term, n)
+	for i := 0; i < n; i++ {
+		if i < 26 {
+			vars[i] = Variable{Name: string(rune('A' + i))}
+		} else {
+			vars[i] = Variable{Name: "_" + strconv.Itoa(i)}
+		}
+	}
+	return vars
+}
+
 func unmarshalTerm(bs []byte) (Term, error) {
 	var iface any
 	dec := json.NewDecoder(bytes.NewReader(bs))

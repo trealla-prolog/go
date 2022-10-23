@@ -9,7 +9,7 @@ import (
 )
 
 func TestInterop(t *testing.T) {
-	pl, err := New(WithDebugLog(log.Default()))
+	pl, err := New(WithDebugLog(log.Default()) /*WithStderrLog(log.Default()), WithStdoutLog(log.Default()), WithTrace() */)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -23,8 +23,18 @@ func TestInterop(t *testing.T) {
 			name: "crypto_data_hash/3",
 			want: []Answer{
 				{
-					Query:    `crypto_data_hash("foo", X, [algorithm(A)]).`,
+					Query:    `crypto_data_hash("foo", X, [algorithm(A)])`,
 					Solution: Substitution{"A": Atom("sha256"), "X": "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae"},
+				},
+			},
+		},
+		{
+			name: "http_consult/1",
+			want: []Answer{
+				{
+					Query:    `http_consult("https://raw.githubusercontent.com/guregu/worker-prolog/978c956801ffff83f190450e5c0325a9d34b064a/src/views/examples/fizzbuzz.pl"), !, fizzbuzz(1, 21), !`,
+					Solution: Substitution{},
+					Stdout:   "1\n2\nfizz\n4\nbuzz\nfizz\n7\n8\nfizz\nbuzz\n11\nfizz\n13\n14\nfizzbuzz\n16\n17\nfizz\n19\nbuzz\nfizz\n",
 				},
 			},
 		},

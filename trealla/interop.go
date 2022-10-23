@@ -6,6 +6,18 @@ import (
 	"github.com/wasmerio/wasmer-go/wasmer"
 )
 
+// Predicate is a Prolog predicate implemented in Go.
+// subquery is an opaque number representing the current query.
+// goal is the goal called, which includes the arguments.
+//
+// RPC execution strategy:
+// - By default, the term returned will be unified with the goal.
+// - Return a throw/1 compound to throw instead.
+// - Return a call/1 compound to call a different goal instead.
+// - Return a 'fail' atom to fail instead.
+// - Return a 'true' atom to succeed without unifying anything.
+type Predicate func(pl Prolog, subquery int32, goal Term) Term
+
 func (pl *prolog) exports() map[string]wasmer.IntoExtern {
 	return map[string]wasmer.IntoExtern{
 		"host-call":   pl.host_call(),
@@ -31,8 +43,6 @@ func (pl *prolog) host_resume() *wasmer.Function {
 			wasmer.NewValueTypes(wasmer.I32),
 		), pl, hostResume)
 }
-
-type procedure func(pl *prolog, subquery int32, arg Term) Term
 
 func hostCall(env any, args []wasmer.Value) ([]wasmer.Value, error) {
 	pl := env.(*prolog)
@@ -77,9 +87,7 @@ func hostCall(env any, args []wasmer.Value) ([]wasmer.Value, error) {
 	if !ok {
 		expr := Atom("throw").Of(
 			Atom("error").Of(
-				Atom("existence_error").Of(
-					Atom("procedure"), goal.pi(),
-				),
+				Atom("existence_error").Of(Atom("procedure"), goal.pi()),
 				piTerm("$host_call", 2),
 			))
 		if err := reply(expr.String()); err != nil {
@@ -88,7 +96,9 @@ func hostCall(env any, args []wasmer.Value) ([]wasmer.Value, error) {
 		return []wasmer.Value{wasm_true}, nil
 	}
 
-	continuation := proc(pl, subquery, goal)
+	locked := &lockedProlog{prolog: pl}
+	continuation := proc(locked, subquery, goal)
+	locked.kill()
 	expr, err := marshal(continuation)
 	if err != nil {
 		return nil, err

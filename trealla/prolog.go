@@ -19,6 +19,11 @@ type Prolog interface {
 	QueryOnce(ctx context.Context, query string, options ...QueryOption) (Answer, error)
 	// Consult loads a Prolog file with the given path.
 	Consult(ctx context.Context, filename string) error
+	// ConsultText loads Prolog text into module. Use "user" for the global module.
+	ConsultText(ctx context.Context, module string, text string) error
+	// Register a native Go predicate.
+	// NOTE: this is EXPERIMENTAL and its API will likely change.
+	Register(ctx context.Context, name string, arity int, predicate Predicate) error
 }
 
 type prolog struct {
@@ -34,7 +39,7 @@ type prolog struct {
 	pl_redo    wasmFunc
 	pl_done    wasmFunc
 
-	procs map[string]procedure
+	procs map[string]Predicate
 
 	preopen string
 	dirs    map[string]string
@@ -52,7 +57,7 @@ type prolog struct {
 // New creates a new Prolog interpreter.
 func New(opts ...Option) (Prolog, error) {
 	pl := &prolog{
-		procs: make(map[string]procedure),
+		procs: make(map[string]Predicate),
 		mu:    new(sync.Mutex),
 	}
 	for _, opt := range opts {
@@ -63,7 +68,7 @@ func New(opts ...Option) (Prolog, error) {
 
 func (pl *prolog) init() error {
 	builder := wasmer.NewWasiStateBuilder("tpl").
-		Argument("-g").Argument("use_module(user), halt").
+		Argument("-g").Argument("halt").
 		Argument("--ns").
 		CaptureStdout().
 		CaptureStderr()
@@ -164,17 +169,29 @@ func (pl *prolog) init() error {
 	return nil
 }
 
-func (pl *prolog) consultText(module, text string) error {
+func (pl *prolog) ConsultText(ctx context.Context, module, text string) error {
+	pl.mu.Lock()
+	defer pl.mu.Unlock()
+	return pl.consultText(ctx, module, text)
+}
+
+func (pl *prolog) consultText(ctx context.Context, module, text string) error {
 	// Module:'$load_chars'(Text).
 	goal := Atom(":").Of(Atom(module), Atom("$load_chars").Of(text))
-	_, err := pl.QueryOnce(context.Background(), goal.String())
+	_, err := pl.QueryOnce(ctx, goal.String(), withoutLock)
+	if err != nil {
+		err = fmt.Errorf("trealla: consult text failed: %w", err)
+	}
 	return err
 }
 
 func (pl *prolog) Consult(_ context.Context, filename string) error {
 	pl.mu.Lock()
 	defer pl.mu.Unlock()
+	return pl.consult(filename)
+}
 
+func (pl *prolog) consult(filename string) error {
 	fstr, err := newCString(pl, filename)
 	if err != nil {
 		return err
@@ -189,6 +206,76 @@ func (pl *prolog) Consult(_ context.Context, filename string) error {
 		return fmt.Errorf("trealla: failed to consult file: %s", filename)
 	}
 	return nil
+}
+
+func (pl *prolog) Register(ctx context.Context, name string, arity int, proc Predicate) error {
+	pl.mu.Lock()
+	defer pl.mu.Unlock()
+	return pl.register(ctx, name, arity, proc)
+}
+
+func (pl *prolog) register(ctx context.Context, name string, arity int, proc Predicate) error {
+	functor := Atom(name)
+	pi := piTerm(functor, arity)
+	pl.procs[pi.String()] = proc
+	vars := numbervars(arity)
+	head := functor.Of(vars...)
+	body := Atom("host_rpc").Of(head)
+	clause := fmt.Sprintf(`%s :- %s.`, head.String(), body.String())
+	return pl.consultText(ctx, "builtins", clause)
+}
+
+// lockedProlog skips the locking the normal *prolog does.
+// It's only valid during a single RPC call.
+type lockedProlog struct {
+	prolog *prolog
+	dead   bool
+}
+
+func (pl *lockedProlog) kill() {
+	pl.dead = true
+}
+
+func (pl *lockedProlog) ensure() error {
+	if pl.dead {
+		return fmt.Errorf("trealla: using invalid reference to interpreter")
+	}
+	return nil
+}
+
+func (pl *lockedProlog) Query(ctx context.Context, ask string, options ...QueryOption) Query {
+	if err := pl.ensure(); err != nil {
+		return &query{err: err}
+	}
+	return pl.prolog.Query(ctx, ask, append(options, withoutLock)...)
+}
+
+func (pl *lockedProlog) QueryOnce(ctx context.Context, query string, options ...QueryOption) (Answer, error) {
+	if err := pl.ensure(); err != nil {
+		return Answer{}, err
+	}
+	return pl.prolog.QueryOnce(ctx, query, append(options, withoutLock)...)
+}
+
+func (pl *lockedProlog) ConsultText(ctx context.Context, module, text string) error {
+	if err := pl.ensure(); err != nil {
+		return err
+	}
+	return pl.prolog.consultText(ctx, module, text)
+}
+
+func (pl *lockedProlog) Consult(_ context.Context, filename string) error {
+	if err := pl.ensure(); err != nil {
+		return err
+	}
+	return pl.prolog.consult(filename)
+}
+
+func (pl *lockedProlog) Register(ctx context.Context, name string, arity int, proc Predicate) error {
+	if err := pl.ensure(); err != nil {
+		return err
+	}
+	return pl.prolog.register(ctx, name, arity, proc)
 }
 
 // Option is an optional parameter for New.
@@ -259,3 +346,8 @@ func WithDebugLog(logger *log.Logger) Option {
 		pl.debug = logger
 	}
 }
+
+var (
+	_ Prolog = (*prolog)(nil)
+	_ Prolog = &lockedProlog{}
+)
