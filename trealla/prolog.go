@@ -22,7 +22,7 @@ type Prolog interface {
 	// ConsultText loads Prolog text into module. Use "user" for the global module.
 	ConsultText(ctx context.Context, module string, text string) error
 	// Register a native Go predicate.
-	// NOTE: this is EXPERIMENTAL and its API will likely change.
+	// NOTE: this is *experimental* and its API will likely change.
 	Register(ctx context.Context, name string, arity int, predicate Predicate) error
 }
 

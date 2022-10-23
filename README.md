@@ -117,6 +117,13 @@ fmt.Printf("%+v", result)
 
 See **[package trealla's documentation](https://pkg.go.dev/github.com/trealla-prolog/go#section-directories)** for more details and examples.
 
+## Builtins
+
+These additional predicates are built in:
+
+- `crypto_data_hash/3`
+- `http_consult/1`
+
 ## WASM Binary
 
 This library embeds the Trealla WebAssembly binary in itself, so you can use it without any external dependencies.

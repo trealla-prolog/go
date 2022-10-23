@@ -14,17 +14,25 @@ import (
 	"net/url"
 )
 
+var builtins = []struct {
+	name  string
+	arity int
+	proc  Predicate
+}{
+	{"crypto_data_hash", 3, crypto_data_hash_3},
+	{"http_consult", 1, http_consult_1},
+}
+
 func (pl *prolog) loadBuiltins() error {
-	if err := pl.register(context.Background(), "crypto_data_hash", 3, crypto_data_hash_3); err != nil {
-		return err
-	}
-	if err := pl.register(context.Background(), "http_consult", 1, http_consult_1); err != nil {
-		return err
+	for _, predicate := range builtins {
+		if err := pl.register(context.Background(), predicate.name, predicate.arity, predicate.proc); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
-func http_consult_1(pl Prolog, _ int32, goal Term) Term {
+func http_consult_1(_ Prolog, _ int32, goal Term) Term {
 	cmp, ok := goal.(Compound)
 	if !ok {
 		return typeError("compound", goal, piTerm("http_consult", 1))
@@ -72,13 +80,8 @@ func http_consult_1(pl Prolog, _ int32, goal Term) Term {
 		return resourceError(Atom(err.Error()), piTerm("http_consult/1", 1))
 	}
 
-	if err := pl.ConsultText(context.Background(), href.String(), buf.String()); err != nil {
-		return systemError(err.Error())
-	}
-	return Atom("true")
-
 	// call(URL:'$load_chars'(Text)).
-	// return Atom("call").Of(Atom(":").Of(Atom(href.String()), Atom("$load_chars").Of(buf.String())))
+	return Atom("call").Of(Atom(":").Of(Atom(href.String()), Atom("$load_chars").Of(buf.String())))
 }
 
 func crypto_data_hash_3(pl Prolog, _ int32, goal Term) Term {
@@ -105,7 +108,7 @@ func crypto_data_hash_3(pl Prolog, _ int32, goal Term) Term {
 	if !isList(opts) {
 		return typeError("list", opts, piTerm("crypto_data_hash", 3))
 	}
-	algo := findOptionAtom(opts, "algorithm", "sha256")
+	algo := findOption[Atom](opts, "algorithm", "sha256")
 	var digest []byte
 	switch algo {
 	case Atom("sha256"):
@@ -151,13 +154,14 @@ func throwTerm(ball Term) Compound {
 	return Compound{Functor: "throw", Args: []Term{ball}}
 }
 
-func findOptionAtom(opts Term, functor, fallback Atom) Atom {
+func findOption[T Term](opts Term, functor Atom, fallback T) T {
 	if empty, ok := opts.(Atom); ok && empty == "[]" {
 		return fallback
 	}
 	list, ok := opts.([]Term)
 	if !ok {
-		return "$error"
+		var empty T
+		return empty
 	}
 	for i, x := range list {
 		switch x := x.(type) {
@@ -166,7 +170,7 @@ func findOptionAtom(opts Term, functor, fallback Atom) Atom {
 				continue
 			}
 			switch arg := x.Args[0].(type) {
-			case Atom:
+			case T:
 				return arg
 			case Variable:
 				list[i] = functor.Of(fallback)

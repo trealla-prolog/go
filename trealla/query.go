@@ -155,7 +155,7 @@ func (q *query) redo(ctx context.Context) bool {
 	}
 
 	if q.pl.debug != nil {
-		q.pl.debug.Println("redo:", q.goal, q.subquery)
+		q.pl.debug.Println("redo:", q.subquery, q.goal)
 	}
 
 	pl := q.pl
