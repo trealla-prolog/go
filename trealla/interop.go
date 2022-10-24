@@ -10,12 +10,12 @@ import (
 // subquery is an opaque number representing the current query.
 // goal is the goal called, which includes the arguments.
 //
-// RPC execution strategy:
-// - By default, the term returned will be unified with the goal.
-// - Return a throw/1 compound to throw instead.
-// - Return a call/1 compound to call a different goal instead.
-// - Return a 'fail' atom to fail instead.
-// - Return a 'true' atom to succeed without unifying anything.
+// Return value meaning:
+//   - By default, the term returned will be unified with the goal.
+//   - Return a throw/1 compound to throw instead.
+//   - Return a call/1 compound to call a different goal instead.
+//   - Return a 'fail' atom to fail instead.
+//   - Return a 'true' atom to succeed without unifying anything.
 type Predicate func(pl Prolog, subquery int32, goal Term) Term
 
 func (pl *prolog) exports() map[string]wasmer.IntoExtern {

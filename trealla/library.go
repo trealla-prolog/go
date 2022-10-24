@@ -6,7 +6,6 @@ import (
 	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/sha512"
-	_ "embed"
 	"encoding/hex"
 	"fmt"
 	"io"
