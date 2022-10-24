@@ -86,7 +86,7 @@ func TestInterop(t *testing.T) {
 	}
 }
 
-func ExampleProlog_Register() {
+func Example_register() {
 	ctx := context.Background()
 	pl, err := New()
 	if err != nil {
