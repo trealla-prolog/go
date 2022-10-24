@@ -31,7 +31,7 @@ func (pl *prolog) loadBuiltins() error {
 	return nil
 }
 
-func http_consult_1(_ Prolog, _ int32, goal Term) Term {
+func http_consult_1(_ Prolog, _ Subquery, goal Term) Term {
 	cmp, ok := goal.(Compound)
 	if !ok {
 		return typeError("compound", goal, piTerm("http_consult", 1))
@@ -83,7 +83,7 @@ func http_consult_1(_ Prolog, _ int32, goal Term) Term {
 	return Atom("call").Of(Atom(":").Of(Atom(href.String()), Atom("$load_chars").Of(buf.String())))
 }
 
-func crypto_data_hash_3(pl Prolog, _ int32, goal Term) Term {
+func crypto_data_hash_3(pl Prolog, _ Subquery, goal Term) Term {
 	cmp, ok := goal.(Compound)
 	if !ok {
 		return typeError("compound", goal, piTerm("crypto_data_hash", 3))

@@ -16,7 +16,11 @@ import (
 //   - Return a call/1 compound to call a different goal instead.
 //   - Return a 'fail' atom to fail instead.
 //   - Return a 'true' atom to succeed without unifying anything.
-type Predicate func(pl Prolog, subquery int32, goal Term) Term
+type Predicate func(pl Prolog, subquery Subquery, goal Term) Term
+
+// Subquery is an opaque value representing an in-flight query.
+// It is unique as long as the query is alive, but may be re-used later on.
+type Subquery int32
 
 func (pl *prolog) exports() map[string]wasmer.IntoExtern {
 	return map[string]wasmer.IntoExtern{
@@ -97,7 +101,7 @@ func hostCall(env any, args []wasmer.Value) ([]wasmer.Value, error) {
 	}
 
 	locked := &lockedProlog{prolog: pl}
-	continuation := proc(locked, subquery, goal)
+	continuation := proc(locked, Subquery(subquery), goal)
 	locked.kill()
 	expr, err := marshal(continuation)
 	if err != nil {
