@@ -63,6 +63,15 @@ func TestInterop(t *testing.T) {
 				},
 			},
 		},
+		// {
+		// 	name: "http_fetch/3",
+		// 	want: []Answer{
+		// 		{
+		// 			Query:    `http_fetch("https://jsonplaceholder.typicode.com/todos/1", Result, [as(json)]).`,
+		// 			Solution: Substitution{"Result": Compound{Functor: "{}", Args: []Term{Compound{Functor: ",", Args: []Term{Compound{Functor: ":", Args: []Term{"userId", 1}}, Compound{Functor: ",", Args: []Term{Compound{Functor: ":", Args: []Term{"id", 1}}, Compound{Functor: ",", Args: []Term{Compound{Functor: ":", Args: []Term{"title", "delectus aut autem"}}, Compound{Functor: ":", Args: []Term{"completed", "false"}}}}}}}}}}},
+		// 		},
+		// 	},
+		// },
 	}
 
 	for _, tc := range tests {
@@ -123,7 +132,7 @@ func Example_register() {
 			))
 		}
 
-		// Do the encoding actual work.
+		// Do the actual encoding work.
 		output := base32.StdEncoding.EncodeToString([]byte(input))
 
 		// Return a goal that Trealla will unify with its input:

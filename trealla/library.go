@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 var builtins = []struct {
@@ -20,6 +21,7 @@ var builtins = []struct {
 }{
 	{"crypto_data_hash", 3, crypto_data_hash_3},
 	{"http_consult", 1, http_consult_1},
+	{"http_fetch", 3, http_fetch_3},
 }
 
 func (pl *prolog) loadBuiltins() error {
@@ -29,6 +31,68 @@ func (pl *prolog) loadBuiltins() error {
 		}
 	}
 	return nil
+}
+
+// TODO: needs to support forms, headers, etc.
+func http_fetch_3(_ Prolog, _ Subquery, goal Term) Term {
+	cmp, _ := goal.(Compound)
+	result := cmp.Args[1]
+	opts := cmp.Args[2]
+
+	str, ok := cmp.Args[0].(string)
+	if !ok {
+		return typeError("chars", cmp.Args[0], piTerm("http_fetch", 3))
+	}
+	href, err := url.Parse(str)
+	if err != nil {
+		return domainError("url", cmp.Args[0], piTerm("http_fetch", 3))
+	}
+
+	method := findOption[Atom](opts, "method", "get")
+	as := findOption[Atom](opts, "as", "string")
+	bodystr := findOption(opts, "body", "")
+	var body io.Reader
+	if bodystr != "" {
+		body = strings.NewReader(bodystr)
+	}
+
+	req, err := http.NewRequest(strings.ToUpper(string(method)), href.String(), body)
+	if err != nil {
+		return domainError("url", cmp.Args[0], err.Error())
+	}
+	// req.Header.Add("Accept", "application/x-prolog")
+	req.Header.Set("User-Agent", "trealla-prolog/go")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return systemError(err.Error())
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusOK: // ok
+	case http.StatusNoContent:
+		return goal
+	case http.StatusNotFound, http.StatusGone:
+		return existenceError("source_sink", str, piTerm("http_fetch", 3))
+	case http.StatusForbidden, http.StatusUnauthorized:
+		return permissionError("open,source_sink", str, piTerm("http_fetch", 3))
+	default:
+		return systemError(fmt.Errorf("http_consult/1: unexpected status code: %d", resp.StatusCode))
+	}
+
+	var buf bytes.Buffer
+	if _, err := io.Copy(&buf, resp.Body); err != nil {
+		return resourceError(Atom(err.Error()), piTerm("http_fetch", 3))
+	}
+
+	switch as {
+	case "json":
+		js := Variable{Name: "_JS"}
+		return Atom("call").Of(Atom(",").Of(Atom("=").Of(result, js), Atom("json_chars").Of(js, buf.String())))
+	}
+
+	return Atom(cmp.Functor).Of(str, buf.String(), Variable{Name: "_"})
 }
 
 func http_consult_1(_ Prolog, _ Subquery, goal Term) Term {
@@ -76,7 +140,7 @@ func http_consult_1(_ Prolog, _ Subquery, goal Term) Term {
 
 	var buf bytes.Buffer
 	if _, err := io.Copy(&buf, resp.Body); err != nil {
-		return resourceError(Atom(err.Error()), piTerm("http_consult/1", 1))
+		return resourceError(Atom(err.Error()), piTerm("http_consult", 1))
 	}
 
 	// call(URL:'$load_chars'(Text)).
