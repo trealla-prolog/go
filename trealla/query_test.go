@@ -3,7 +3,6 @@ package trealla_test
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 	"math/big"
 	"os"
@@ -361,51 +360,4 @@ func TestBind(t *testing.T) {
 			t.Error("unexpected value. want:", want, "got:", x)
 		}
 	})
-}
-
-func Example() {
-	ctx := context.Background()
-
-	// create a new Prolog interpreter
-	pl, err := trealla.New()
-	if err != nil {
-		panic(err)
-	}
-
-	// start a new query
-	query := pl.Query(ctx, "member(X, [1, foo(bar), c]).")
-	// calling Close is not necessary if you iterate through the whole query, but it doesn't hurt
-	defer query.Close()
-
-	// iterate through answers
-	for query.Next(ctx) {
-		answer := query.Current()
-		x := answer.Solution["X"]
-		fmt.Println(x)
-	}
-
-	// make sure to check the query for errors
-	if err := query.Err(); err != nil {
-		panic(err)
-	}
-	// Output: 1
-	// foo(bar)
-	// c
-}
-
-func ExampleWithBind() {
-	ctx := context.Background()
-	pl, err := trealla.New()
-	if err != nil {
-		panic(err)
-	}
-
-	// bind the variable X to the atom 'hello world' through query options
-	answer, err := pl.QueryOnce(ctx, "write(X).", trealla.WithBind("X", trealla.Atom("hello world")))
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println(answer.Stdout)
-	// Output: hello world
 }
