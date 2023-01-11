@@ -44,8 +44,8 @@ func (str *cstring) free(pl *prolog) error {
 
 func (pl *prolog) gets(addr, size int32) (string, error) {
 	data := pl.memory.Data()
-	ptr := int(addr)
-	end := int(addr + size)
+	ptr := int(uint32(addr))
+	end := int(uint32(addr + size))
 	if end >= len(data) {
 		return "", fmt.Errorf("invalid string of %d length at: %d", size, addr)
 	}
