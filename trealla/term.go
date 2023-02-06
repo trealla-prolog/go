@@ -20,6 +20,7 @@ import (
 //   - Atom
 //   - Compound
 //   - Variable
+//   - Slices of any supported type
 type Term any
 
 // Atom is a Prolog atom.
