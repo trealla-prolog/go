@@ -163,8 +163,7 @@ func crypto_data_hash_3(pl Prolog, _ Subquery, goal Term) Term {
 		return typeError("chars", data, piTerm("crypto_data_hash", 3))
 	}
 	switch hash.(type) {
-	case Variable: // ok
-	case string: // ok
+	case Variable, string: // ok
 	default:
 		return typeError("chars", hash, piTerm("crypto_data_hash", 3))
 	}

@@ -35,8 +35,7 @@ func (pl *prolog) host_call() *wasmer.Function {
 		wasmer.NewFunctionType(
 			wasmer.NewValueTypes(wasmer.I32, wasmer.I32, wasmer.I32, wasmer.I32, wasmer.I32),
 			wasmer.NewValueTypes(wasmer.I32),
-		),
-		pl, hostCall)
+		), pl, hostCall)
 }
 
 func (pl *prolog) host_resume() *wasmer.Function {
@@ -50,7 +49,6 @@ func (pl *prolog) host_resume() *wasmer.Function {
 
 func hostCall(env any, args []wasmer.Value) ([]wasmer.Value, error) {
 	pl := env.(*prolog)
-	_ = pl
 	subquery := args[0].I32()
 	msgptr := args[1].I32()
 	msgsize := args[2].I32()
@@ -84,7 +82,7 @@ func hostCall(env any, args []wasmer.Value) ([]wasmer.Value, error) {
 		if err := reply(expr.String()); err != nil {
 			return nil, err
 		}
-		return []wasmer.Value{wasm_true}, nil
+		return []wasmer.Value{wasmTrue}, nil
 	}
 
 	proc, ok := pl.procs[goal.Indicator()]
@@ -97,7 +95,7 @@ func hostCall(env any, args []wasmer.Value) ([]wasmer.Value, error) {
 		if err := reply(expr.String()); err != nil {
 			return nil, err
 		}
-		return []wasmer.Value{wasm_true}, nil
+		return []wasmer.Value{wasmTrue}, nil
 	}
 
 	locked := &lockedProlog{prolog: pl}
@@ -110,9 +108,9 @@ func hostCall(env any, args []wasmer.Value) ([]wasmer.Value, error) {
 	if err := reply(expr); err != nil {
 		return nil, err
 	}
-	return []wasmer.Value{wasm_true}, nil
+	return []wasmer.Value{wasmTrue}, nil
 }
 
 func hostResume(_ any, args []wasmer.Value) ([]wasmer.Value, error) {
-	return []wasmer.Value{wasm_false}, nil
+	return []wasmer.Value{wasmFalse}, nil
 }

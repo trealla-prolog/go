@@ -2,7 +2,7 @@
 `import "github.com/trealla-prolog/go/trealla"`
 
 Prolog interface for Go using [Trealla Prolog](https://github.com/trealla-prolog/trealla) and [Wasmer](https://github.com/wasmerio/wasmer-go).
-It's pretty fast. Not as fast as native Trealla, but pretty dang fast (2-5x slower than native).
+It's pretty fast. Not as fast as native Trealla, but pretty dang fast (about 2x slower than native).
 
 **Development Status**: beta 🤠
 
@@ -26,7 +26,6 @@ go.dev is confused about this and will pull a very old version if you try to `go
 This library uses WebAssembly to run Trealla, executing Prolog queries in an isolated environment.
 
 ```go
-
 import "github.com/trealla-prolog/go/trealla"
 
 func main() {
@@ -124,10 +123,23 @@ These additional predicates are built in:
 - `crypto_data_hash/3`
 - `http_consult/1`
 
-## WASM Binary
+## WASM binary
 
 This library embeds the Trealla WebAssembly binary in itself, so you can use it without any external dependencies.
-The binaries are currently sourced from [guregu/trealla](https://github.com/guregu/trealla), also [available from WAPM](https://wapm.io/guregu/trealla).
+The binaries are currently sourced from [guregu/trealla](https://github.com/guregu/trealla).
+
+### Building the WASM binary
+
+If you'd like to build `libtpl.wasm` yourself:
+
+```bash
+# The submodule in src/trealla points to the current version
+git submodule update --init --recursive
+# Use the Makefile in the root of this project
+make clean wasm
+# Run the tests and benchmark to make sure it works
+go test -v ./trealla -bench=.
+```
 
 ## Thanks
  

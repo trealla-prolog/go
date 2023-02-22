@@ -28,6 +28,6 @@ func init() {
 
 var (
 	// wasm_null  = wasmer.NewI32(0)
-	wasm_false = wasmer.NewI32(0)
-	wasm_true  = wasmer.NewI32(1)
+	wasmFalse = wasmer.NewI32(0)
+	wasmTrue  = wasmer.NewI32(1)
 )
