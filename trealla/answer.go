@@ -21,7 +21,7 @@ type Answer struct {
 
 type response struct {
 	Answer
-	Result queryStatus
+	Status queryStatus
 	Error  json.RawMessage // ball
 }
 
@@ -68,7 +68,7 @@ func (pl *prolog) parse(goal, stdout, stderr string) (Answer, error) {
 		return resp.Answer, fmt.Errorf("trealla: decoding error: %w", err)
 	}
 
-	switch resp.Result {
+	switch resp.Status {
 	case statusSuccess:
 		return resp.Answer, nil
 	case statusFailure:
@@ -80,7 +80,7 @@ func (pl *prolog) parse(goal, stdout, stderr string) (Answer, error) {
 		}
 		return resp.Answer, ErrThrow{Query: goal, Ball: ball, Stdout: output, Stderr: stderr}
 	default:
-		return resp.Answer, fmt.Errorf("trealla: unexpected query status: %v", resp.Result)
+		return resp.Answer, fmt.Errorf("trealla: unexpected query status: %v", resp.Status)
 	}
 }
 

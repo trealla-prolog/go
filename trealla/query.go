@@ -106,7 +106,7 @@ func (pl *prolog) start(ctx context.Context, goal string, options ...QueryOption
 				ch <- fmt.Errorf("trealla: panic: %v", ex)
 			}
 		}()
-		v, err := pl.pl_query(pl.ptr, goalstr.ptr, subqptr)
+		v, err := pl.pl_query(pl.ptr, goalstr.ptr, subqptr, 0)
 		if err == nil {
 			ret = v.(int32)
 		}
