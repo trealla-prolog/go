@@ -47,7 +47,7 @@ type query struct {
 // Query executes a query, returning an iterator for results.
 func (pl *prolog) Query(ctx context.Context, goal string, options ...QueryOption) Query {
 	q := pl.start(ctx, goal, options...)
-	runtime.SetFinalizer(q, finalize)
+	runtime.SetFinalizer(q, finalizeQuery)
 	return q
 }
 
@@ -209,15 +209,19 @@ func (pl *prolog) start(ctx context.Context, goal string, options ...QueryOption
 		}
 		stdoutptr, err := pl.indirect(q.stdout_pp)
 		if err != nil {
-			q.setError(fmt.Errorf("trealla: couldn't read subquery pointer: %w", err))
+			q.setError(fmt.Errorf("trealla: couldn't read stdout pointer: %w", err))
 			return q
 		}
 		if stdoutptr != 0 {
-			defer pl.free.Call(pl.store, stdoutptr, stdoutlen, 1)
+			defer func() {
+				// log.Println("freeing stdout", stdoutptr, stdoutlen)
+				pl.free.Call(pl.store, stdoutptr, stdoutlen, 1)
+			}()
 		}
 		stdout, err := pl.gets(stdoutptr, stdoutlen)
 		if err != nil {
-			panic(err)
+			q.setError(err)
+			return q
 		}
 
 		stderrlen, err := pl.indirect(q.stderr_len_p)
@@ -231,11 +235,13 @@ func (pl *prolog) start(ctx context.Context, goal string, options ...QueryOption
 			return q
 		}
 		if stderrptr != 0 {
+			// log.Println("freeing stderr", stdoutptr, stdoutlen)
 			defer pl.free.Call(pl.store, stderrptr, stderrlen, 1)
 		}
 		stderr, err := pl.gets(stderrptr, stderrlen)
 		if err != nil {
-			panic(err)
+			q.setError(err)
+			return q
 		}
 
 		if pl.closing {
@@ -297,34 +303,36 @@ func (q *query) redo(ctx context.Context) bool {
 
 		stdoutlen, err := pl.indirect(q.stdout_len_p)
 		if err != nil {
-			q.setError(fmt.Errorf("trealla: couldn't read stdout pointer: %w", err))
+			q.setError(fmt.Errorf("trealla: couldn't read stdout len pointer: %w", err))
 			return false
 		}
 		stdoutptr, err := pl.indirect(q.stdout_pp)
 		if err != nil {
-			q.setError(fmt.Errorf("trealla: couldn't read subquery pointer: %w", err))
+			q.setError(fmt.Errorf("trealla: couldn't read stdout pointer: %w", err))
 			return false
 		}
 		defer pl.free.Call(pl.store, stdoutptr, stdoutlen, 1)
 		stdout, err := pl.gets(stdoutptr, stdoutlen)
 		if err != nil {
-			panic(err)
+			q.setError(err)
+			return false
 		}
 
 		stderrlen, err := pl.indirect(q.stderr_len_p)
 		if err != nil {
-			q.setError(fmt.Errorf("trealla: couldn't read stderr pointer: %w", err))
+			q.setError(fmt.Errorf("trealla: couldn't read stderr len pointer: %w", err))
 			return false
 		}
 		stderrptr, err := pl.indirect(q.stderr_pp)
 		if err != nil {
-			q.setError(fmt.Errorf("trealla: couldn't read subquery pointer: %w", err))
+			q.setError(fmt.Errorf("trealla: couldn't read stderr pointer: %w", err))
 			return false
 		}
 		defer pl.free.Call(pl.store, stderrptr, stderrlen, 1)
 		stderr, err := pl.gets(stderrptr, stderrlen)
 		if err != nil {
-			panic(err)
+			q.setError(err)
+			return false
 		}
 
 		if pl.closing {
@@ -393,6 +401,7 @@ func (q *query) Close() error {
 		if q.lock {
 			q.pl.mu.Lock()
 		}
+		// log.Println("DONE", q.subquery)
 		q.pl.pl_done.Call(q.pl.store, q.subquery)
 		if q.lock {
 			q.pl.mu.Unlock()
@@ -415,6 +424,8 @@ func (q *query) Close() error {
 		q.pl.free.Call(q.pl.store, q.stderr_len_p, 4, 1)
 		q.stderr_len_p = 0
 	}
+
+	q.pl = nil
 
 	q.done = true
 	return nil
@@ -464,7 +475,7 @@ func escapeQuery(query string) string {
 	return fmt.Sprintf(`js_ask(%s).`, escapeString(query))
 }
 
-func finalize(q *query) {
+func finalizeQuery(q *query) {
 	q.Close()
 }
 

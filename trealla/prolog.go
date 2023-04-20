@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"runtime"
 	"sync"
 
 	"github.com/bytecodealliance/wasmtime-go/v8"
@@ -30,6 +31,7 @@ type Prolog interface {
 	// Close destroys the Prolog instance.
 	// If this isn't called and the Prolog variable goes out of scope, runtime finalizers will try to free the memory.
 	Close()
+	Test() string
 }
 
 type prolog struct {
@@ -61,6 +63,8 @@ type prolog struct {
 
 	mu *sync.Mutex
 }
+
+func (pl *prolog) Test() string { return fmt.Sprintf("%v", pl.memory.Size(pl.store)) }
 
 // New creates a new Prolog interpreter.
 func New(opts ...Option) (Prolog, error) {
@@ -96,41 +100,21 @@ func (pl *prolog) init() error {
 		if err := wasi.PreopenDir(pl.preopen, "/"); err != nil {
 			panic(err)
 		}
-		// builder = builder.PreopenDirectory(pl.preopen)
 	}
 	for alias, dir := range pl.dirs {
-		fmt.Println("PREOPN", dir, alias)
 		if err := wasi.PreopenDir(dir, alias); err != nil {
 			panic(err)
 		}
-		// builder = builder.MapDirectory(alias, dir)
 	}
 
-	// if err := wasi.PreopenDir("/Users/guregu/code/trealla/go/trealla/testdata", "foo"); err != nil {
-	// 	panic(err)
-	// }
-
-	// wasiEnv, err := builder.Finalize()
-	// if err != nil {
-	// 	return fmt.Errorf("trealla: failed to init WASI: %w", err)
-	// }
 	pl.wasi = wasi
 
 	pl.store = wasmtime.NewStore(wasmEngine)
 	pl.store.SetWasi(wasi)
 
-	// imports := []wasmtime.AsExtern{
-	// 	{}
-	// }
-	// importObject, err := wasiEnv.GenerateImportObject(wasmStore, wasmModule)
-	// if err != nil {
-	// 	return err
-	// }
-	// importObject.Register("trealla", pl.exports())
-
 	linker := wasmtime.NewLinker(wasmEngine)
 	if err := linker.DefineWasi(); err != nil {
-		panic(err)
+		return err
 	}
 	if err := linker.DefineFunc(pl.store, "trealla", "host-call", pl.hostCall); err != nil {
 		return err
@@ -205,13 +189,22 @@ func (pl *prolog) init() error {
 		return fmt.Errorf("trealla: failed to load builtins: %w", err)
 	}
 
+	runtime.SetFinalizer(pl, finalizeProlog)
+
 	return nil
 }
 
 func (pl *prolog) Close() {
 	pl.mu.Lock()
 	defer pl.mu.Unlock()
-	// pl.instance = nil
+	pl.instance = nil
+	pl.memory = nil
+	pl.store = nil
+	pl.wasi = nil
+}
+
+func finalizeProlog(pl *prolog) {
+	pl.Close()
 }
 
 func (pl *prolog) ConsultText(ctx context.Context, module, text string) error {
@@ -266,6 +259,7 @@ func (pl *prolog) indirect(pp int32) (int32, error) {
 	if err := binary.Read(buf, binary.LittleEndian, &p); err != nil {
 		return 0, fmt.Errorf("trealla: couldn't indirect pointer: %d", pp)
 	}
+	runtime.KeepAlive(data)
 	return p, nil
 }
 
@@ -345,6 +339,8 @@ func (pl *lockedProlog) Register(ctx context.Context, name string, arity int, pr
 func (pl *lockedProlog) Close() {
 	pl.prolog.closing = true
 }
+
+func (pl *lockedProlog) Test() string { return fmt.Sprintf("%v", -1) }
 
 // Option is an optional parameter for New.
 type Option func(*prolog)

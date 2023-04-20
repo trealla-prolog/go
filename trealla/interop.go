@@ -72,8 +72,7 @@ type Subquery int32
 // 		), pl, hostResume)
 // }
 
-func (pl *prolog) hostCall(subquery, msgptr, msgsize, reply_pp, replysize_p int32) (int32, *wasmtime.Trap) {
-	// pl := env.(*prolog)
+func (pl *prolog) hostCall(c *wasmtime.Caller, subquery, msgptr, msgsize, reply_pp, replysize_p int32) (int32, *wasmtime.Trap) {
 	// subquery := args[0].I32()
 	// msgptr := args[1].I32()
 	// msgsize := args[2].I32()
