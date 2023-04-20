@@ -18,10 +18,22 @@ func TestQuery(t *testing.T) {
 		testdata = "./trealla/testdata"
 	}
 
-	pl, err := trealla.New(trealla.WithMapDir("testdata", testdata), trealla.WithLibraryPath("/testdata"), trealla.WithDebugLog(log.Default()))
+	pl, err := trealla.New(
+		trealla.WithPreopenDir("."),
+		trealla.WithLibraryPath("testdata"), trealla.WithDebugLog(log.Default()))
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	t.Run("files", func(t *testing.T) {
+		ctx := context.Background()
+		q, err := pl.QueryOnce(ctx, `directory_files("/", X)`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("%+v", q)
+		// spew.Dump(q)
+	})
 
 	t.Run("consult", func(t *testing.T) {
 		if err := pl.Consult(context.Background(), "/testdata/greeting.pl"); err != nil {
@@ -270,6 +282,22 @@ func TestThrow(t *testing.T) {
 		t.Error("unexpected stdout:", ex.Stdout)
 	}
 }
+
+// func TestPreopen(t *testing.T) {
+// 	pl, err := trealla.New(trealla.WithMapDir("/testdata", "testdata"))
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+
+// 	ctx := context.Background()
+// 	q, err := pl.QueryOnce(ctx, `directory_files(".", X)`)
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+
+// 	spew.Dump(q)
+// 	t.Fail()
+// }
 
 func TestSyntaxError(t *testing.T) {
 	pl, err := trealla.New(trealla.WithPreopenDir("testdata"))

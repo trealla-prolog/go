@@ -53,7 +53,7 @@ func BenchmarkRedo(b *testing.B) {
 }
 
 func BenchmarkTak(b *testing.B) {
-	pl, err := New(WithPreopenDir("testdata"))
+	pl, err := New(WithPreopenDir("."))
 	if err != nil {
 		b.Fatal(err)
 	}

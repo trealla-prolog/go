@@ -41,6 +41,8 @@ func (pl *prolog) parse(goal, stdout, stderr string) (Answer, error) {
 		butt = nl
 	}
 
+	// fmt.Println("OUTPUT:", stdout)
+
 	output := stdout[start+1 : end]
 	js := stdout[end+1 : butt]
 

@@ -3,13 +3,15 @@
 package trealla
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"log"
 	"sync"
 
-	"github.com/wasmerio/wasmer-go/wasmer"
+	"github.com/bytecodealliance/wasmtime-go/v8"
 )
 
 // Prolog is a Prolog interpreter.
@@ -31,18 +33,19 @@ type Prolog interface {
 }
 
 type prolog struct {
-	instance *wasmer.Instance
-	wasi     *wasmer.WasiEnvironment
-	memory   *wasmer.Memory
+	instance *wasmtime.Instance
+	store    *wasmtime.Store
+	wasi     *wasmtime.WasiConfig
+	memory   *wasmtime.Memory
 	closing  bool
 
-	ptr        int32
-	realloc    wasmFunc
-	free       wasmFunc
-	pl_query   wasmFunc
-	pl_consult wasmFunc
-	pl_redo    wasmFunc
-	pl_done    wasmFunc
+	ptr               int32
+	realloc           wasmFunc
+	free              wasmFunc
+	pl_query_captured wasmFunc
+	pl_consult        wasmFunc
+	pl_redo_captured  wasmFunc
+	pl_done           wasmFunc
 
 	procs map[string]Predicate
 
@@ -71,40 +74,71 @@ func New(opts ...Option) (Prolog, error) {
 	return pl, pl.init()
 }
 
-func (pl *prolog) init() error {
-	builder := wasmer.NewWasiStateBuilder("tpl").
-		Argument("-g").Argument("halt").
-		Argument("--ns").
-		CaptureStdout().
-		CaptureStderr()
+func (pl *prolog) argv() []string {
+	args := []string{"tpl", "-g", "halt", "--ns"}
 	if pl.library != "" {
-		builder = builder.Argument("--library").Argument(pl.library)
+		args = append(args, "--library", pl.library)
 	}
 	if pl.trace {
-		builder = builder.Argument("-t")
+		args = append(args, "-t")
 	}
 	if pl.quiet {
-		builder = builder.Argument("-q")
+		args = append(args, "-q")
 	}
+	return args
+}
+
+func (pl *prolog) init() error {
+	argv := pl.argv()
+	wasi := wasmtime.NewWasiConfig()
+	wasi.SetArgv(argv)
 	if pl.preopen != "" {
-		builder = builder.PreopenDirectory(pl.preopen)
+		if err := wasi.PreopenDir(pl.preopen, "/"); err != nil {
+			panic(err)
+		}
+		// builder = builder.PreopenDirectory(pl.preopen)
 	}
 	for alias, dir := range pl.dirs {
-		builder = builder.MapDirectory(alias, dir)
+		fmt.Println("PREOPN", dir, alias)
+		if err := wasi.PreopenDir(dir, alias); err != nil {
+			panic(err)
+		}
+		// builder = builder.MapDirectory(alias, dir)
 	}
-	wasiEnv, err := builder.Finalize()
-	if err != nil {
-		return fmt.Errorf("trealla: failed to init WASI: %w", err)
-	}
-	pl.wasi = wasiEnv
 
-	importObject, err := wasiEnv.GenerateImportObject(wasmStore, wasmModule)
-	if err != nil {
+	// if err := wasi.PreopenDir("/Users/guregu/code/trealla/go/trealla/testdata", "foo"); err != nil {
+	// 	panic(err)
+	// }
+
+	// wasiEnv, err := builder.Finalize()
+	// if err != nil {
+	// 	return fmt.Errorf("trealla: failed to init WASI: %w", err)
+	// }
+	pl.wasi = wasi
+
+	pl.store = wasmtime.NewStore(wasmEngine)
+	pl.store.SetWasi(wasi)
+
+	// imports := []wasmtime.AsExtern{
+	// 	{}
+	// }
+	// importObject, err := wasiEnv.GenerateImportObject(wasmStore, wasmModule)
+	// if err != nil {
+	// 	return err
+	// }
+	// importObject.Register("trealla", pl.exports())
+
+	linker := wasmtime.NewLinker(wasmEngine)
+	if err := linker.DefineWasi(); err != nil {
+		panic(err)
+	}
+	if err := linker.DefineFunc(pl.store, "trealla", "host-call", pl.hostCall); err != nil {
 		return err
 	}
-	importObject.Register("trealla", pl.exports())
-
-	instance, err := wasmer.NewInstance(wasmModule, importObject)
+	if err := linker.DefineFunc(pl.store, "trealla", "host-resume", hostResume); err != nil {
+		return err
+	}
+	instance, err := linker.Instantiate(pl.store, wasmModule)
 	if err != nil {
 		return err
 	}
@@ -112,58 +146,58 @@ func (pl *prolog) init() error {
 
 	// run once to initialize global interpreter
 
-	start, err := instance.Exports.GetWasiStartFunction()
-	if err != nil {
-		return fmt.Errorf("trealla: failed to get start function: %w", err)
+	start := instance.GetExport(pl.store, "_start")
+	if start == nil {
+		return fmt.Errorf("trealla: failed to get start function")
 	}
-	if _, err := start(); err != nil {
+	if _, err := start.Func().Call(pl.store); err != nil {
 		return fmt.Errorf("trealla: failed to initialize: %w", err)
 	}
 
-	mem, err := instance.Exports.GetMemory("memory")
-	if err != nil {
-		return fmt.Errorf("trealla: failed to get memory: %w", err)
+	mem := instance.GetExport(pl.store, "memory").Memory()
+	if mem == nil {
+		return fmt.Errorf("trealla: failed to get memory")
 	}
 	pl.memory = mem
 
-	pl_global, err := instance.Exports.GetFunction("pl_global")
-	if err != nil {
+	pl_global := instance.GetExport(pl.store, "pl_global").Func()
+	if pl_global == nil {
 		return errUnexported("pl_global", err)
 	}
 
-	ptr, err := pl_global()
+	ptr, err := pl_global.Call(pl.store)
 	if err != nil {
 		return fmt.Errorf("trealla: failed to get interpreter: %w", err)
 	}
 	pl.ptr = ptr.(int32)
 
-	pl.realloc, err = instance.Exports.GetFunction("canonical_abi_realloc")
-	if err != nil {
+	pl.realloc = instance.GetExport(pl.store, "canonical_abi_realloc").Func()
+	if pl.realloc == nil {
 		return errUnexported("canonical_abi_realloc", err)
 	}
 
-	pl.free, err = instance.Exports.GetFunction("canonical_abi_free")
-	if err != nil {
+	pl.free = instance.GetExport(pl.store, "canonical_abi_free").Func()
+	if pl.free == nil {
 		return errUnexported("canonical_abi_free", err)
 	}
 
-	pl.pl_query, err = instance.Exports.GetFunction("pl_query")
-	if err != nil {
-		return errUnexported("pl_query", err)
+	pl.pl_query_captured = instance.GetExport(pl.store, "pl_query_captured").Func()
+	if pl.pl_query_captured == nil {
+		return errUnexported("pl_query_captured", err)
 	}
 
-	pl.pl_redo, err = instance.Exports.GetFunction("pl_redo")
-	if err != nil {
-		return errUnexported("pl_redo", err)
+	pl.pl_redo_captured = instance.GetExport(pl.store, "pl_redo_captured").Func()
+	if pl.pl_redo_captured == nil {
+		return errUnexported("pl_redo_captured", err)
 	}
 
-	pl.pl_done, err = instance.Exports.GetFunction("pl_done")
-	if err != nil {
+	pl.pl_done = instance.GetExport(pl.store, "pl_done").Func()
+	if pl.pl_done == nil {
 		return errUnexported("pl_done", err)
 	}
 
-	pl.pl_consult, err = instance.Exports.GetFunction("pl_consult")
-	if err != nil {
+	pl.pl_consult = instance.GetExport(pl.store, "pl_consult").Func()
+	if pl.pl_consult == nil {
 		return errUnexported("pl_consult", err)
 	}
 
@@ -177,8 +211,7 @@ func (pl *prolog) init() error {
 func (pl *prolog) Close() {
 	pl.mu.Lock()
 	defer pl.mu.Unlock()
-	pl.instance.Close()
-	pl.instance = nil
+	// pl.instance = nil
 }
 
 func (pl *prolog) ConsultText(ctx context.Context, module, text string) error {
@@ -216,7 +249,7 @@ func (pl *prolog) consult(filename string) error {
 	}
 	defer fstr.free(pl)
 
-	ret, err := pl.pl_consult(pl.ptr, fstr.ptr)
+	ret, err := pl.pl_consult.Call(pl.store, pl.ptr, fstr.ptr)
 	if err != nil {
 		return err
 	}
@@ -224,6 +257,16 @@ func (pl *prolog) consult(filename string) error {
 		return fmt.Errorf("trealla: failed to consult file: %s", filename)
 	}
 	return nil
+}
+
+func (pl *prolog) indirect(pp int32) (int32, error) {
+	data := pl.memory.UnsafeData(pl.store)
+	buf := bytes.NewBuffer(data[pp : pp+4])
+	var p int32
+	if err := binary.Read(buf, binary.LittleEndian, &p); err != nil {
+		return 0, fmt.Errorf("trealla: couldn't indirect pointer: %d", pp)
+	}
+	return p, nil
 }
 
 func (pl *prolog) Register(ctx context.Context, name string, arity int, proc Predicate) error {
