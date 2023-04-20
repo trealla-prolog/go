@@ -24,6 +24,17 @@ func BenchmarkQuery(b *testing.B) {
 	}
 }
 
+func BenchmarkOverhead(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		pl, err := New()
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = pl
+		pl.Close()
+	}
+}
+
 func BenchmarkRedo(b *testing.B) {
 	pl, err := New()
 	if err != nil {

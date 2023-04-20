@@ -5,6 +5,7 @@ package trealla
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"sync"
 
@@ -24,12 +25,16 @@ type Prolog interface {
 	// Register a native Go predicate.
 	// NOTE: this is *experimental* and its API will likely change.
 	Register(ctx context.Context, name string, arity int, predicate Predicate) error
+	// Close destroys the Prolog instance.
+	// If this isn't called and the Prolog variable goes out of scope, runtime finalizers will try to free the memory.
+	Close()
 }
 
 type prolog struct {
 	instance *wasmer.Instance
 	wasi     *wasmer.WasiEnvironment
 	memory   *wasmer.Memory
+	closing  bool
 
 	ptr        int32
 	realloc    wasmFunc
@@ -169,9 +174,19 @@ func (pl *prolog) init() error {
 	return nil
 }
 
+func (pl *prolog) Close() {
+	pl.mu.Lock()
+	defer pl.mu.Unlock()
+	pl.instance.Close()
+	pl.instance = nil
+}
+
 func (pl *prolog) ConsultText(ctx context.Context, module, text string) error {
 	pl.mu.Lock()
 	defer pl.mu.Unlock()
+	if pl.instance == nil {
+		return io.EOF
+	}
 	return pl.consultText(ctx, module, text)
 }
 
@@ -188,6 +203,9 @@ func (pl *prolog) consultText(ctx context.Context, module, text string) error {
 func (pl *prolog) Consult(_ context.Context, filename string) error {
 	pl.mu.Lock()
 	defer pl.mu.Unlock()
+	if pl.instance == nil {
+		return io.EOF
+	}
 	return pl.consult(filename)
 }
 
@@ -211,6 +229,9 @@ func (pl *prolog) consult(filename string) error {
 func (pl *prolog) Register(ctx context.Context, name string, arity int, proc Predicate) error {
 	pl.mu.Lock()
 	defer pl.mu.Unlock()
+	if pl.instance == nil {
+		return io.EOF
+	}
 	return pl.register(ctx, name, arity, proc)
 }
 
@@ -276,6 +297,10 @@ func (pl *lockedProlog) Register(ctx context.Context, name string, arity int, pr
 		return err
 	}
 	return pl.prolog.register(ctx, name, arity, proc)
+}
+
+func (pl *lockedProlog) Close() {
+	pl.prolog.closing = true
 }
 
 // Option is an optional parameter for New.

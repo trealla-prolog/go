@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"runtime"
 	"strings"
 	"sync"
@@ -70,6 +71,10 @@ func (pl *prolog) start(ctx context.Context, goal string, options ...QueryOption
 	if q.lock {
 		pl.mu.Lock()
 		defer pl.mu.Unlock()
+	}
+	if q.pl.instance == nil || pl.closing {
+		q.setError(io.EOF)
+		return q
 	}
 
 	if err := q.reify(); err != nil {
@@ -138,6 +143,9 @@ func (pl *prolog) start(ctx context.Context, goal string, options ...QueryOption
 
 		stdout := string(pl.wasi.ReadStdout())
 		stderr := string(pl.wasi.ReadStderr())
+		if pl.closing {
+			pl.Close()
+		}
 		ans, err := pl.parse(q.goal, stdout, stderr)
 		if err == nil {
 			q.push(ans)
@@ -152,6 +160,10 @@ func (q *query) redo(ctx context.Context) bool {
 	if q.lock {
 		q.pl.mu.Lock()
 		defer q.pl.mu.Unlock()
+	}
+	if q.pl.instance == nil {
+		q.setError(io.EOF)
+		return false
 	}
 
 	if q.pl.debug != nil {
@@ -189,6 +201,9 @@ func (q *query) redo(ctx context.Context) bool {
 
 		stdout := string(pl.wasi.ReadStdout())
 		stderr := string(pl.wasi.ReadStderr())
+		if pl.closing {
+			pl.Close()
+		}
 		ans, err := pl.parse(q.goal, stdout, stderr)
 		switch {
 		case IsFailure(err):
