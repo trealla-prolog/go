@@ -35,6 +35,11 @@ type query struct {
 	err  error
 	done bool
 
+	stdout_pp    int32
+	stdout_len_p int32
+	stderr_pp    int32
+	stderr_len_p int32
+
 	lock bool
 	mu   *sync.Mutex
 }
@@ -112,7 +117,8 @@ func (pl *prolog) start(ctx context.Context, goal string, options ...QueryOption
 		q.setError(fmt.Errorf("trealla: failed to allocate subquery pointer"))
 		return q
 	}
-	defer pl.free.Call(pl.store, stdoutpp, 4, 1)
+	q.stdout_pp = stdoutpp
+	// defer pl.free.Call(pl.store, stdoutpp, 4, 1)
 
 	// stdout size pointer
 	stdoutlenptrv, err := pl.realloc.Call(pl.store, 0, 0, 1, 4)
@@ -125,7 +131,8 @@ func (pl *prolog) start(ctx context.Context, goal string, options ...QueryOption
 		q.setError(fmt.Errorf("trealla: failed to allocate subquery pointer"))
 		return q
 	}
-	defer pl.free.Call(pl.store, stdoutlenptr, 4, 1)
+	q.stdout_len_p = stdoutlenptr
+	// defer pl.free.Call(pl.store, stdoutlenptr, 4, 1)
 
 	// stderr string pointer
 	stderrptrv, err := pl.realloc.Call(pl.store, 0, 0, 1, 4)
@@ -138,7 +145,8 @@ func (pl *prolog) start(ctx context.Context, goal string, options ...QueryOption
 		q.setError(fmt.Errorf("trealla: failed to allocate subquery pointer"))
 		return q
 	}
-	defer pl.free.Call(pl.store, stderrpp, 4, 1)
+	q.stderr_pp = stderrpp
+	// defer pl.free.Call(pl.store, stderrpp, 4, 1)
 
 	// stderr size pointer
 	stderrlenptrv, err := pl.realloc.Call(pl.store, 0, 0, 1, 4)
@@ -151,7 +159,8 @@ func (pl *prolog) start(ctx context.Context, goal string, options ...QueryOption
 		q.setError(fmt.Errorf("trealla: failed to allocate subquery pointer"))
 		return q
 	}
-	defer pl.free.Call(pl.store, stderrlenptr, 4, 1)
+	q.stderr_len_p = stderrlenptr
+	// defer pl.free.Call(pl.store, stderrlenptr, 4, 1)
 
 	ch := make(chan error, 2)
 	var ret int32
@@ -162,7 +171,7 @@ func (pl *prolog) start(ctx context.Context, goal string, options ...QueryOption
 			}
 		}()
 		v, err := pl.pl_query_captured.Call(pl.store, pl.ptr, goalstr.ptr, subqptr,
-			stdoutpp, stdoutlenptr, stderrpp, stderrlenptr, 0)
+			q.stdout_pp, q.stdout_len_p, q.stderr_pp, q.stderr_len_p, 0)
 		if err == nil {
 			ret = v.(int32)
 		}
@@ -193,33 +202,37 @@ func (pl *prolog) start(ctx context.Context, goal string, options ...QueryOption
 			}
 		}
 
-		stdoutlen, err := pl.indirect(stdoutlenptr)
+		stdoutlen, err := pl.indirect(q.stdout_len_p)
 		if err != nil {
 			q.setError(fmt.Errorf("trealla: couldn't read stdout pointer: %w", err))
 			return q
 		}
-		stdoutptr, err := pl.indirect(stdoutpp)
+		stdoutptr, err := pl.indirect(q.stdout_pp)
 		if err != nil {
 			q.setError(fmt.Errorf("trealla: couldn't read subquery pointer: %w", err))
 			return q
 		}
-		defer pl.free.Call(pl.store, stdoutptr, stdoutlen, 1)
+		if stdoutptr != 0 {
+			defer pl.free.Call(pl.store, stdoutptr, stdoutlen, 1)
+		}
 		stdout, err := pl.gets(stdoutptr, stdoutlen)
 		if err != nil {
 			panic(err)
 		}
 
-		stderrlen, err := pl.indirect(stderrlenptr)
+		stderrlen, err := pl.indirect(q.stderr_len_p)
 		if err != nil {
 			q.setError(fmt.Errorf("trealla: couldn't read stderr pointer: %w", err))
 			return q
 		}
-		stderrptr, err := pl.indirect(stderrpp)
+		stderrptr, err := pl.indirect(q.stderr_pp)
 		if err != nil {
 			q.setError(fmt.Errorf("trealla: couldn't read subquery pointer: %w", err))
 			return q
 		}
-		defer pl.free.Call(pl.store, stderrptr, stderrlen, 1)
+		if stderrptr != 0 {
+			defer pl.free.Call(pl.store, stderrptr, stderrlen, 1)
+		}
 		stderr, err := pl.gets(stderrptr, stderrlen)
 		if err != nil {
 			panic(err)
@@ -254,58 +267,6 @@ func (q *query) redo(ctx context.Context) bool {
 
 	pl := q.pl
 
-	// stdout string pointer
-	stdoutptrv, err := pl.realloc.Call(pl.store, 0, 0, 1, 4)
-	if err != nil {
-		q.setError(fmt.Errorf("trealla: allocation error: %w", err))
-		return false
-	}
-	stdoutpp := stdoutptrv.(int32)
-	if stdoutpp == 0 {
-		q.setError(fmt.Errorf("trealla: failed to allocate subquery pointer"))
-		return false
-	}
-	defer pl.free.Call(pl.store, stdoutpp, 4, 1)
-
-	// stdout size pointer
-	stdoutlenptrv, err := pl.realloc.Call(pl.store, 0, 0, 1, 4)
-	if err != nil {
-		q.setError(fmt.Errorf("trealla: allocation error: %w", err))
-		return false
-	}
-	stdoutlenptr := stdoutlenptrv.(int32)
-	if stdoutlenptr == 0 {
-		q.setError(fmt.Errorf("trealla: failed to allocate subquery pointer"))
-		return false
-	}
-	defer pl.free.Call(pl.store, stdoutlenptr, 4, 1)
-
-	// stderr string pointer
-	stderrptrv, err := pl.realloc.Call(pl.store, 0, 0, 1, 4)
-	if err != nil {
-		q.setError(fmt.Errorf("trealla: allocation error: %w", err))
-		return false
-	}
-	stderrpp := stderrptrv.(int32)
-	if stderrpp == 0 {
-		q.setError(fmt.Errorf("trealla: failed to allocate subquery pointer"))
-		return false
-	}
-	defer pl.free.Call(pl.store, stderrpp, 4, 1)
-
-	// stderr size pointer
-	stderrlenptrv, err := pl.realloc.Call(pl.store, 0, 0, 1, 4)
-	if err != nil {
-		q.setError(fmt.Errorf("trealla: allocation error: %w", err))
-		return false
-	}
-	stderrlenptr := stderrlenptrv.(int32)
-	if stderrlenptr == 0 {
-		q.setError(fmt.Errorf("trealla: failed to allocate subquery pointer"))
-		return false
-	}
-	defer pl.free.Call(pl.store, stderrlenptr, 4, 1)
-
 	ch := make(chan error, 2)
 	var ret int32
 	go func() {
@@ -314,7 +275,7 @@ func (q *query) redo(ctx context.Context) bool {
 				ch <- fmt.Errorf("trealla: panic: %v", ex)
 			}
 		}()
-		v, err := pl.pl_redo_captured.Call(pl.store, q.subquery, stdoutpp, stdoutlenptr, stderrpp, stderrlenptr)
+		v, err := pl.pl_redo_captured.Call(pl.store, q.subquery, q.stdout_pp, q.stdout_len_p, q.stderr_pp, q.stderr_len_p)
 		if err == nil {
 			ret = v.(int32)
 		}
@@ -334,12 +295,12 @@ func (q *query) redo(ctx context.Context) bool {
 			return false
 		}
 
-		stdoutlen, err := pl.indirect(stdoutlenptr)
+		stdoutlen, err := pl.indirect(q.stdout_len_p)
 		if err != nil {
 			q.setError(fmt.Errorf("trealla: couldn't read stdout pointer: %w", err))
 			return false
 		}
-		stdoutptr, err := pl.indirect(stdoutpp)
+		stdoutptr, err := pl.indirect(q.stdout_pp)
 		if err != nil {
 			q.setError(fmt.Errorf("trealla: couldn't read subquery pointer: %w", err))
 			return false
@@ -350,12 +311,12 @@ func (q *query) redo(ctx context.Context) bool {
 			panic(err)
 		}
 
-		stderrlen, err := pl.indirect(stderrlenptr)
+		stderrlen, err := pl.indirect(q.stderr_len_p)
 		if err != nil {
 			q.setError(fmt.Errorf("trealla: couldn't read stderr pointer: %w", err))
 			return false
 		}
-		stderrptr, err := pl.indirect(stderrpp)
+		stderrptr, err := pl.indirect(q.stderr_pp)
 		if err != nil {
 			q.setError(fmt.Errorf("trealla: couldn't read subquery pointer: %w", err))
 			return false
@@ -436,6 +397,23 @@ func (q *query) Close() error {
 		if q.lock {
 			q.pl.mu.Unlock()
 		}
+	}
+
+	if q.stdout_pp != 0 {
+		q.pl.free.Call(q.pl.store, q.stdout_pp, 4, 1)
+		q.stdout_pp = 0
+	}
+	if q.stderr_len_p != 0 {
+		q.pl.free.Call(q.pl.store, q.stdout_len_p, 4, 1)
+		q.stdout_len_p = 0
+	}
+	if q.stderr_pp != 0 {
+		q.pl.free.Call(q.pl.store, q.stderr_pp, 4, 1)
+		q.stderr_pp = 0
+	}
+	if q.stderr_len_p != 0 {
+		q.pl.free.Call(q.pl.store, q.stderr_len_p, 4, 1)
+		q.stderr_len_p = 0
 	}
 
 	q.done = true

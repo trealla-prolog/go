@@ -43,6 +43,9 @@ func (str *cstring) free(pl *prolog) error {
 }
 
 func (pl *prolog) gets(addr, size int32) (string, error) {
+	if addr == 0 {
+		return "", nil
+	}
 	data := pl.memory.UnsafeData(pl.store)
 	ptr := int(uint32(addr))
 	end := int(uint32(addr + size))

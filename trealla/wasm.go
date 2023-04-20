@@ -12,25 +12,22 @@ var tplWASM []byte
 // type wasmFunc func(...any) (any, error)
 type wasmFunc = *wasmtime.Func
 
-// var wasmEngine = wasmer.NewEngine()
 var wasmEngine *wasmtime.Engine
-
-func init() {
-	cfg := wasmtime.NewConfig()
-	cfg.SetWasmBulkMemory(true)
-	cfg.SetStrategy(wasmtime.StrategyCranelift)
-	cfg.SetCraneliftOptLevel(wasmtime.OptLevelSpeed)
-	wasmEngine = wasmtime.NewEngineWithConfig(cfg)
-}
-
-// var wasmStore = wasmtime.NewStore(wasmEngine)
 var wasmModule *wasmtime.Module
 
 func init() {
+	cfg := wasmtime.NewConfig()
+	cfg.SetStrategy(wasmtime.StrategyCranelift)
+	cfg.SetCraneliftOptLevel(wasmtime.OptLevelSpeed)
+	cfg.SetWasmBulkMemory(true)
+	cfg.SetWasmMemory64(false)
+	cfg.SetWasmSIMD(true)
+	cfg.SetWasmMultiValue(true)
+	cfg.SetWasmMultiMemory(true)
+	// cfg.CacheConfigLoadDefault()
+	wasmEngine = wasmtime.NewEngineWithConfig(cfg)
+
 	var err error
-	// if wasmer.IsCompilerAvailable(wasmer.LLVM) {
-	// 	wasmEngine = wasmer.NewEngineWithConfig(wasmer.NewConfig().UseLLVMCompiler())
-	// }
 	wasmModule, err = wasmtime.NewModule(wasmEngine, tplWASM)
 	if err != nil {
 		panic(err)
