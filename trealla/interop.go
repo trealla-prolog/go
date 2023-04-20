@@ -71,8 +71,8 @@ func hostCall(env any, args []wasmer.Value) ([]wasmer.Value, error) {
 		if err != nil {
 			return err
 		}
-		binary.LittleEndian.PutUint32(memory[reply_pp:], uint32(msg.ptr))
-		binary.LittleEndian.PutUint32(memory[replysize_p:], uint32(msg.size-1))
+		binary.LittleEndian.PutUint32(memory[uint32(reply_pp):], uint32(msg.ptr))
+		binary.LittleEndian.PutUint32(memory[uint32(replysize_p):], uint32(msg.size-1))
 		return nil
 	}
 
