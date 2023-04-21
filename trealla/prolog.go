@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"runtime"
 	"sync"
@@ -31,7 +32,8 @@ type Prolog interface {
 	// Close destroys the Prolog instance.
 	// If this isn't called and the Prolog variable goes out of scope, runtime finalizers will try to free the memory.
 	Close()
-	Test() string
+	// Stats returns diagnostic information.
+	Stats() Stats
 }
 
 type prolog struct {
@@ -64,7 +66,15 @@ type prolog struct {
 	mu *sync.Mutex
 }
 
-func (pl *prolog) Test() string { return fmt.Sprintf("%v", pl.memory.Size(pl.store)) }
+func (pl *prolog) Test() string {
+	if pl.store != nil {
+		if err := ioutil.WriteFile("x.raw", pl.memory.UnsafeData(pl.store), 0666); err != nil {
+			panic(err)
+		}
+		return fmt.Sprintf("%v", pl.memory.DataSize(pl.store))
+	}
+	return "<dead>"
+}
 
 // New creates a new Prolog interpreter.
 func New(opts ...Option) (Prolog, error) {
@@ -280,7 +290,27 @@ func (pl *prolog) register(ctx context.Context, name string, arity int, proc Pre
 	head := functor.Of(vars...)
 	body := Atom("host_rpc").Of(head)
 	clause := fmt.Sprintf(`%s :- %s.`, head.String(), body.String())
-	return pl.consultText(ctx, "builtins", clause)
+	return pl.consultText(ctx, "user", clause)
+}
+
+type Stats struct {
+	MemorySize int
+}
+
+func GetStats(pl Prolog) Stats {
+	return pl.Stats()
+}
+
+func (pl *prolog) Stats() Stats {
+	if pl.memory == nil || pl.store == nil {
+		return Stats{}
+	}
+	// data := pl.memory.UnsafeData(pl.store)
+	// os.WriteFile("leak.raw.data."+strconv.Itoa(int(time.Now().Unix())), data, 0666)
+	// runtime.KeepAlive(data)
+	return Stats{
+		MemorySize: int(pl.memory.DataSize(pl.store)),
+	}
 }
 
 // lockedProlog skips the locking the normal *prolog does.
@@ -292,6 +322,7 @@ type lockedProlog struct {
 
 func (pl *lockedProlog) kill() {
 	pl.dead = true
+	pl.prolog = nil
 }
 
 func (pl *lockedProlog) ensure() error {
@@ -340,7 +371,9 @@ func (pl *lockedProlog) Close() {
 	pl.prolog.closing = true
 }
 
-func (pl *lockedProlog) Test() string { return fmt.Sprintf("%v", -1) }
+func (pl *lockedProlog) Stats() Stats {
+	return pl.prolog.Stats()
+}
 
 // Option is an optional parameter for New.
 type Option func(*prolog)

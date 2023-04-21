@@ -212,10 +212,10 @@ func (pl *prolog) start(ctx context.Context, goal string, options ...QueryOption
 			q.setError(fmt.Errorf("trealla: couldn't read stdout pointer: %w", err))
 			return q
 		}
-		if stdoutptr != 0 {
+		if stdoutptr != 0 && q.done {
 			defer func() {
 				// log.Println("freeing stdout", stdoutptr, stdoutlen)
-				pl.free.Call(pl.store, stdoutptr, stdoutlen, 1)
+				// pl.free.Call(pl.store, stdoutptr, stdoutlen, 1)
 			}()
 		}
 		stdout, err := pl.gets(stdoutptr, stdoutlen)
@@ -236,7 +236,7 @@ func (pl *prolog) start(ctx context.Context, goal string, options ...QueryOption
 		}
 		if stderrptr != 0 {
 			// log.Println("freeing stderr", stdoutptr, stdoutlen)
-			defer pl.free.Call(pl.store, stderrptr, stderrlen, 1)
+			// defer pl.free.Call(pl.store, stderrptr, stderrlen, 1)
 		}
 		stderr, err := pl.gets(stderrptr, stderrlen)
 		if err != nil {
@@ -311,11 +311,13 @@ func (q *query) redo(ctx context.Context) bool {
 			q.setError(fmt.Errorf("trealla: couldn't read stdout pointer: %w", err))
 			return false
 		}
-		defer pl.free.Call(pl.store, stdoutptr, stdoutlen, 1)
 		stdout, err := pl.gets(stdoutptr, stdoutlen)
 		if err != nil {
 			q.setError(err)
 			return false
+		}
+		if q.done {
+			pl.free.Call(pl.store, stdoutptr, stdoutlen, 1)
 		}
 
 		stderrlen, err := pl.indirect(q.stderr_len_p)
@@ -328,11 +330,13 @@ func (q *query) redo(ctx context.Context) bool {
 			q.setError(fmt.Errorf("trealla: couldn't read stderr pointer: %w", err))
 			return false
 		}
-		defer pl.free.Call(pl.store, stderrptr, stderrlen, 1)
 		stderr, err := pl.gets(stderrptr, stderrlen)
 		if err != nil {
 			q.setError(err)
 			return false
+		}
+		if q.done {
+			pl.free.Call(pl.store, stderrptr, stderrlen, 1)
 		}
 
 		if pl.closing {
@@ -397,6 +401,8 @@ func (q *query) Close() error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
+	// log.Println("close", q.subquery)
+
 	if !q.done && q.subquery != 0 {
 		if q.lock {
 			q.pl.mu.Lock()
@@ -406,13 +412,14 @@ func (q *query) Close() error {
 		if q.lock {
 			q.pl.mu.Unlock()
 		}
+		q.done = true
 	}
 
 	if q.stdout_pp != 0 {
 		q.pl.free.Call(q.pl.store, q.stdout_pp, 4, 1)
 		q.stdout_pp = 0
 	}
-	if q.stderr_len_p != 0 {
+	if q.stdout_len_p != 0 {
 		q.pl.free.Call(q.pl.store, q.stdout_len_p, 4, 1)
 		q.stdout_len_p = 0
 	}
@@ -427,7 +434,6 @@ func (q *query) Close() error {
 
 	q.pl = nil
 
-	q.done = true
 	return nil
 }
 
@@ -503,6 +509,12 @@ func WithBinding(subs Substitution) QueryOption {
 
 func withoutLock(q *query) {
 	q.lock = false
+}
+
+func withParent(parent *query) func(*query) {
+	return func(q *query) {
+
+	}
 }
 
 var queryEscaper = strings.NewReplacer("\t", " ", "\n", " ", "\r", "")

@@ -43,7 +43,7 @@ func (str *cstring) free(pl *prolog) error {
 }
 
 func (pl *prolog) gets(addr, size int32) (string, error) {
-	if addr == 0 {
+	if addr == 0 || size == 0 {
 		return "", nil
 	}
 	data := pl.memory.UnsafeData(pl.store)
@@ -52,5 +52,6 @@ func (pl *prolog) gets(addr, size int32) (string, error) {
 	if end >= len(data) {
 		return "", fmt.Errorf("invalid string of %d length at: %d", size, addr)
 	}
+	// fmt.Println("gets", addr, size, string(data[ptr:end]))
 	return string(data[ptr:end]), nil
 }

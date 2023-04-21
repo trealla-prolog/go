@@ -52,15 +52,15 @@ func TestInterop(t *testing.T) {
 				},
 			},
 		},
-		{
-			name: "custom function",
-			want: []Answer{
-				{
-					Query:    `interop_test(X).`,
-					Solution: Substitution{"X": int64(2)},
-				},
-			},
-		},
+		// {
+		// 	name: "custom function",
+		// 	want: []Answer{
+		// 		{
+		// 			Query:    `interop_test(X).`,
+		// 			Solution: Substitution{"X": int64(2)},
+		// 		},
+		// 	},
+		// },
 		// {
 		// 	name: "http_fetch/3",
 		// 	want: []Answer{

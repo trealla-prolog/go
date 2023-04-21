@@ -26,6 +26,7 @@ type response struct {
 }
 
 func (pl *prolog) parse(goal, stdout, stderr string) (Answer, error) {
+	// log.Println("parse:", goal, "stdout:", stdout, "stderr:", stderr)
 	if len(strings.TrimSpace(stdout)) == 0 {
 		return Answer{}, ErrFailure{Query: goal, Stderr: stderr}
 	}
@@ -69,6 +70,8 @@ func (pl *prolog) parse(goal, stdout, stderr string) (Answer, error) {
 	if err := dec.Decode(&resp); err != nil {
 		return resp.Answer, fmt.Errorf("trealla: decoding error: %w", err)
 	}
+
+	// spew.Dump(resp)
 
 	switch resp.Status {
 	case statusSuccess:
