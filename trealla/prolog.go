@@ -303,16 +303,16 @@ func (pl *lockedProlog) Close() {
 	pl.prolog.closing = true
 }
 
-type Stats struct {
-	MemorySize int
-}
+// type Stats struct {
+// 	MemorySize int
+// }
 
-func GetStats(pl Prolog) Stats {
-	if x, ok := pl.(*prolog); ok {
-		return Stats{MemorySize: int(x.memory.DataSize())}
-	}
-	return Stats{}
-}
+// func GetStats(pl Prolog) Stats {
+// 	if x, ok := pl.(*prolog); ok {
+// 		return Stats{MemorySize: int(x.memory.DataSize())}
+// 	}
+// 	return Stats{}
+// }
 
 // Option is an optional parameter for New.
 type Option func(*prolog)
