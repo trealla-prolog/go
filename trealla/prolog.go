@@ -3,13 +3,16 @@
 package trealla
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"log"
+	"runtime"
 	"sync"
 
-	"github.com/wasmerio/wasmer-go/wasmer"
+	"github.com/bytecodealliance/wasmtime-go/v8"
 )
 
 // Prolog is a Prolog interpreter.
@@ -28,21 +31,29 @@ type Prolog interface {
 	// Close destroys the Prolog instance.
 	// If this isn't called and the Prolog variable goes out of scope, runtime finalizers will try to free the memory.
 	Close()
+	// Stats returns diagnostic information.
+	Stats() Stats
 }
 
 type prolog struct {
-	instance *wasmer.Instance
-	wasi     *wasmer.WasiEnvironment
-	memory   *wasmer.Memory
+	instance *wasmtime.Instance
+	store    *wasmtime.Store
+	wasi     *wasmtime.WasiConfig
+	memory   *wasmtime.Memory
 	closing  bool
+	running  map[int32]*query
+	spawning map[int32]*query
 
-	ptr        int32
-	realloc    wasmFunc
-	free       wasmFunc
-	pl_query   wasmFunc
-	pl_consult wasmFunc
-	pl_redo    wasmFunc
-	pl_done    wasmFunc
+	ptr             int32
+	realloc         wasmFunc
+	free            wasmFunc
+	pl_consult      wasmFunc
+	pl_capture_free wasmFunc
+	pl_capture      wasmFunc
+	pl_capture_read wasmFunc
+	pl_query        wasmFunc
+	pl_redo         wasmFunc
+	pl_done         wasmFunc
 
 	procs map[string]Predicate
 
@@ -62,8 +73,10 @@ type prolog struct {
 // New creates a new Prolog interpreter.
 func New(opts ...Option) (Prolog, error) {
 	pl := &prolog{
-		procs: make(map[string]Predicate),
-		mu:    new(sync.Mutex),
+		running:  make(map[int32]*query),
+		spawning: make(map[int32]*query),
+		procs:    make(map[string]Predicate),
+		mu:       new(sync.Mutex),
 	}
 	for _, opt := range opts {
 		opt(pl)
@@ -71,40 +84,51 @@ func New(opts ...Option) (Prolog, error) {
 	return pl, pl.init()
 }
 
-func (pl *prolog) init() error {
-	builder := wasmer.NewWasiStateBuilder("tpl").
-		Argument("-g").Argument("halt").
-		Argument("--ns").
-		CaptureStdout().
-		CaptureStderr()
+func (pl *prolog) argv() []string {
+	args := []string{"tpl", "-g", "halt", "--ns"}
 	if pl.library != "" {
-		builder = builder.Argument("--library").Argument(pl.library)
+		args = append(args, "--library", pl.library)
 	}
 	if pl.trace {
-		builder = builder.Argument("-t")
+		args = append(args, "-t")
 	}
 	if pl.quiet {
-		builder = builder.Argument("-q")
+		args = append(args, "-q")
 	}
+	return args
+}
+
+func (pl *prolog) init() error {
+	argv := pl.argv()
+	wasi := wasmtime.NewWasiConfig()
+	wasi.SetArgv(argv)
 	if pl.preopen != "" {
-		builder = builder.PreopenDirectory(pl.preopen)
+		if err := wasi.PreopenDir(pl.preopen, "/"); err != nil {
+			panic(err)
+		}
 	}
 	for alias, dir := range pl.dirs {
-		builder = builder.MapDirectory(alias, dir)
+		if err := wasi.PreopenDir(dir, alias); err != nil {
+			panic(err)
+		}
 	}
-	wasiEnv, err := builder.Finalize()
-	if err != nil {
-		return fmt.Errorf("trealla: failed to init WASI: %w", err)
-	}
-	pl.wasi = wasiEnv
 
-	importObject, err := wasiEnv.GenerateImportObject(wasmStore, wasmModule)
-	if err != nil {
+	pl.wasi = wasi
+
+	pl.store = wasmtime.NewStore(wasmEngine)
+	pl.store.SetWasi(wasi)
+
+	linker := wasmtime.NewLinker(wasmEngine)
+	if err := linker.DefineWasi(); err != nil {
 		return err
 	}
-	importObject.Register("trealla", pl.exports())
-
-	instance, err := wasmer.NewInstance(wasmModule, importObject)
+	if err := linker.DefineFunc(pl.store, "trealla", "host-call", pl.hostCall); err != nil {
+		return err
+	}
+	if err := linker.DefineFunc(pl.store, "trealla", "host-resume", hostResume); err != nil {
+		return err
+	}
+	instance, err := linker.Instantiate(pl.store, wasmModule)
 	if err != nil {
 		return err
 	}
@@ -112,73 +136,130 @@ func (pl *prolog) init() error {
 
 	// run once to initialize global interpreter
 
-	start, err := instance.Exports.GetWasiStartFunction()
-	if err != nil {
-		return fmt.Errorf("trealla: failed to get start function: %w", err)
+	start := instance.GetExport(pl.store, "_start")
+	if start == nil {
+		return fmt.Errorf("trealla: failed to get start function")
 	}
-	if _, err := start(); err != nil {
+	if _, err := start.Func().Call(pl.store); err != nil {
 		return fmt.Errorf("trealla: failed to initialize: %w", err)
 	}
 
-	mem, err := instance.Exports.GetMemory("memory")
-	if err != nil {
-		return fmt.Errorf("trealla: failed to get memory: %w", err)
+	mem := instance.GetExport(pl.store, "memory").Memory()
+	if mem == nil {
+		return fmt.Errorf("trealla: failed to get memory")
 	}
 	pl.memory = mem
 
-	pl_global, err := instance.Exports.GetFunction("pl_global")
+	pl_global, err := pl.function("pl_global")
 	if err != nil {
-		return errUnexported("pl_global", err)
+		return err
 	}
 
-	ptr, err := pl_global()
+	ptr, err := pl_global.Call(pl.store)
 	if err != nil {
 		return fmt.Errorf("trealla: failed to get interpreter: %w", err)
 	}
 	pl.ptr = ptr.(int32)
 
-	pl.realloc, err = instance.Exports.GetFunction("canonical_abi_realloc")
+	pl.realloc, err = pl.function("canonical_abi_realloc")
 	if err != nil {
-		return errUnexported("canonical_abi_realloc", err)
+		return err
 	}
 
-	pl.free, err = instance.Exports.GetFunction("canonical_abi_free")
+	pl.free, err = pl.function("canonical_abi_free")
 	if err != nil {
-		return errUnexported("canonical_abi_free", err)
+		return err
 	}
 
-	pl.pl_query, err = instance.Exports.GetFunction("pl_query")
+	pl.pl_capture, err = pl.function("pl_capture")
 	if err != nil {
-		return errUnexported("pl_query", err)
+		return err
 	}
 
-	pl.pl_redo, err = instance.Exports.GetFunction("pl_redo")
+	pl.pl_capture_read, err = pl.function("pl_capture_read")
 	if err != nil {
-		return errUnexported("pl_redo", err)
+		return err
 	}
 
-	pl.pl_done, err = instance.Exports.GetFunction("pl_done")
+	pl.pl_capture_free, err = pl.function("pl_capture_free")
 	if err != nil {
-		return errUnexported("pl_done", err)
+		return err
 	}
 
-	pl.pl_consult, err = instance.Exports.GetFunction("pl_consult")
+	pl.pl_query, err = pl.function("pl_query")
 	if err != nil {
-		return errUnexported("pl_consult", err)
+		return err
+	}
+
+	pl.pl_redo, err = pl.function("pl_redo")
+	if err != nil {
+		return err
+	}
+
+	pl.pl_done, err = pl.function("pl_done")
+	if err != nil {
+		return err
+	}
+
+	pl.pl_consult, err = pl.function("pl_consult")
+	if err != nil {
+		return err
 	}
 
 	if err := pl.loadBuiltins(); err != nil {
 		return fmt.Errorf("trealla: failed to load builtins: %w", err)
 	}
 
+	runtime.SetFinalizer(pl, finalizeProlog)
+
+	return nil
+}
+
+func (pl *prolog) function(symbol string) (wasmFunc, error) {
+	export := pl.instance.GetExport(pl.store, symbol)
+	if export == nil {
+		return nil, errUnexported(symbol)
+	}
+	return export.Func(), nil
+}
+
+func (pl *prolog) alloc(size int32) (int32, error) {
+	ptrv, err := pl.realloc.Call(pl.store, 0, 0, align, size)
+	if err != nil {
+		return 0, err
+	}
+	ptr, ok := ptrv.(int32)
+	if !ok {
+		return 0, fmt.Errorf("unexpected return type for alloc: %T (%v)", ptrv, ptrv)
+	}
+	return ptr, nil
+}
+
+func (pl *prolog) subquery(addr int32) *query {
+	if q, ok := pl.running[addr]; ok {
+		return q
+	}
+	for spawn, q := range pl.spawning {
+		if ptr := pl.indirect(spawn); ptr != 0 {
+			if ptr == addr {
+				return q
+			}
+		}
+	}
 	return nil
 }
 
 func (pl *prolog) Close() {
 	pl.mu.Lock()
 	defer pl.mu.Unlock()
-	pl.instance.Close()
 	pl.instance = nil
+	pl.memory = nil
+	pl.store = nil
+	pl.wasi = nil
+}
+
+func finalizeProlog(pl *prolog) {
+	pl.Close()
 }
 
 func (pl *prolog) ConsultText(ctx context.Context, module, text string) error {
@@ -216,7 +297,7 @@ func (pl *prolog) consult(filename string) error {
 	}
 	defer fstr.free(pl)
 
-	ret, err := pl.pl_consult(pl.ptr, fstr.ptr)
+	ret, err := pl.pl_consult.Call(pl.store, pl.ptr, fstr.ptr)
 	if err != nil {
 		return err
 	}
@@ -224,6 +305,21 @@ func (pl *prolog) consult(filename string) error {
 		return fmt.Errorf("trealla: failed to consult file: %s", filename)
 	}
 	return nil
+}
+
+func (pl *prolog) indirect(pp int32) int32 {
+	if pp == 0 {
+		return 0
+	}
+
+	data := pl.memory.UnsafeData(pl.store)
+	buf := bytes.NewBuffer(data[pp : pp+4])
+	var p int32
+	if err := binary.Read(buf, binary.LittleEndian, &p); err != nil {
+		return 0
+	}
+	runtime.KeepAlive(data)
+	return p
 }
 
 func (pl *prolog) Register(ctx context.Context, name string, arity int, proc Predicate) error {
@@ -243,7 +339,26 @@ func (pl *prolog) register(ctx context.Context, name string, arity int, proc Pre
 	head := functor.Of(vars...)
 	body := Atom("host_rpc").Of(head)
 	clause := fmt.Sprintf(`%s :- %s.`, head.String(), body.String())
-	return pl.consultText(ctx, "builtins", clause)
+	return pl.consultText(ctx, "user", clause)
+}
+
+type Stats struct {
+	MemorySize int
+}
+
+func (pl *prolog) Stats() Stats {
+	pl.mu.Lock()
+	defer pl.mu.Unlock()
+	return pl.stats()
+}
+
+func (pl *prolog) stats() Stats {
+	if pl.memory == nil || pl.store == nil {
+		return Stats{}
+	}
+	return Stats{
+		MemorySize: int(pl.memory.DataSize(pl.store)),
+	}
 }
 
 // lockedProlog skips the locking the normal *prolog does.
@@ -255,6 +370,7 @@ type lockedProlog struct {
 
 func (pl *lockedProlog) kill() {
 	pl.dead = true
+	pl.prolog = nil
 }
 
 func (pl *lockedProlog) ensure() error {
@@ -303,16 +419,9 @@ func (pl *lockedProlog) Close() {
 	pl.prolog.closing = true
 }
 
-// type Stats struct {
-// 	MemorySize int
-// }
-
-// func GetStats(pl Prolog) Stats {
-// 	if x, ok := pl.(*prolog); ok {
-// 		return Stats{MemorySize: int(x.memory.DataSize())}
-// 	}
-// 	return Stats{}
-// }
+func (pl *lockedProlog) Stats() Stats {
+	return pl.prolog.stats()
+}
 
 // Option is an optional parameter for New.
 type Option func(*prolog)

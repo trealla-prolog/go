@@ -1,16 +1,15 @@
 # trealla-go [![GoDoc](https://godoc.org/github.com/trealla-prolog/go?status.svg)](https://godoc.org/github.com/trealla-prolog/go)
 `import "github.com/trealla-prolog/go/trealla"`
 
-Prolog interface for Go using [Trealla Prolog](https://github.com/trealla-prolog/trealla) and [Wasmer](https://github.com/wasmerio/wasmer-go).
+Prolog interface for Go using [Trealla Prolog](https://github.com/trealla-prolog/trealla) and [Wasmtime](https://github.com/bytecodealliance/wasmtime-go).
 It's pretty fast. Not as fast as native Trealla, but pretty dang fast (about 2x slower than native).
 
-**Development Status**: beta 🤠
+**Development Status**: inching closer to stability
 
 ### Caveats
 
-- Beta status, API will probably change.
-- Doesn't work on Windows ([wasmer-go issue](https://github.com/wasmerio/wasmer-go/issues/69)).
-	- Works great on WSL.
+- Beta status, <s>API will probably change</s>
+  - API is relatively stable now.
 
 ## Install
 

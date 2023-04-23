@@ -24,7 +24,7 @@ func BenchmarkQuery(b *testing.B) {
 	}
 }
 
-func BenchmarkOverhead(b *testing.B) {
+func BenchmarkNewProlog(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		pl, err := New()
 		if err != nil {
@@ -53,7 +53,7 @@ func BenchmarkRedo(b *testing.B) {
 }
 
 func BenchmarkTak(b *testing.B) {
-	pl, err := New(WithPreopenDir("testdata"))
+	pl, err := New(WithPreopenDir("."))
 	if err != nil {
 		b.Fatal(err)
 	}

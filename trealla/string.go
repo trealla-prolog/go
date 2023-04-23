@@ -14,7 +14,7 @@ func newCString(pl *prolog, str string) (*cstring, error) {
 		size: len(str) + 1,
 	}
 
-	ptrv, err := pl.realloc(0, 0, 1, cstr.size)
+	ptrv, err := pl.realloc.Call(pl.store, 0, 0, 1, cstr.size)
 	if err != nil {
 		return nil, err
 	}
@@ -24,7 +24,7 @@ func newCString(pl *prolog, str string) (*cstring, error) {
 		return nil, fmt.Errorf("trealla: failed to allocate string: %s", str)
 	}
 
-	data := pl.memory.Data()
+	data := pl.memory.UnsafeData(pl.store)
 	ptr := int(cstr.ptr)
 	copy(data[ptr:], []byte(str))
 	data[ptr+len(str)] = 0
@@ -36,18 +36,22 @@ func (str *cstring) free(pl *prolog) error {
 		return nil
 	}
 
-	_, err := pl.free(str.ptr, str.size, 1)
+	_, err := pl.free.Call(pl.store, str.ptr, str.size, 1)
 	str.ptr = 0
 	str.size = 0
 	return err
 }
 
 func (pl *prolog) gets(addr, size int32) (string, error) {
-	data := pl.memory.Data()
+	if addr == 0 || size == 0 {
+		return "", nil
+	}
+	data := pl.memory.UnsafeData(pl.store)
 	ptr := int(uint32(addr))
 	end := int(uint32(addr + size))
 	if end >= len(data) {
 		return "", fmt.Errorf("invalid string of %d length at: %d", size, addr)
 	}
+	// fmt.Println("gets", addr, size, string(data[ptr:end]))
 	return string(data[ptr:end]), nil
 }

@@ -18,10 +18,22 @@ func TestQuery(t *testing.T) {
 		testdata = "./trealla/testdata"
 	}
 
-	pl, err := trealla.New(trealla.WithMapDir("testdata", testdata), trealla.WithLibraryPath("/testdata"), trealla.WithDebugLog(log.Default()))
+	pl, err := trealla.New(
+		trealla.WithPreopenDir("."),
+		trealla.WithLibraryPath("testdata"), trealla.WithDebugLog(log.Default()))
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	t.Run("files", func(t *testing.T) {
+		ctx := context.Background()
+		q, err := pl.QueryOnce(ctx, `directory_files("/", X)`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("%+v", q)
+		// spew.Dump(q)
+	})
 
 	t.Run("consult", func(t *testing.T) {
 		if err := pl.Consult(context.Background(), "/testdata/greeting.pl"); err != nil {
@@ -194,6 +206,15 @@ func TestQuery(t *testing.T) {
 			},
 		},
 		{
+			name: "changing user_output",
+			want: []trealla.Answer{
+				{
+					Query:    `tell('/testdata/test.txt'), write(hello), flush_output, X = 1, read_file_to_string("/testdata/test.txt", Content, []), delete_file("/testdata/test.txt")`,
+					Solution: trealla.Substitution{"X": int64(1), "Content": "hello"},
+				},
+			},
+		},
+		{
 			name: "residual goals",
 			want: []trealla.Answer{
 				{
@@ -271,7 +292,41 @@ func TestThrow(t *testing.T) {
 	}
 }
 
+func TestPreopen(t *testing.T) {
+	pl, err := trealla.New(trealla.WithPreopenDir("testdata"), trealla.WithMapDir("/foo", "testdata/subdirectory"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+
+	t.Run("WithPreopenDir", func(t *testing.T) {
+		q, err := pl.QueryOnce(ctx, `directory_files("/", X)`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := []trealla.Term{".", "..", "subdirectory", "greeting.pl", "tak.pl"}
+		got := q.Solution["X"]
+		if !reflect.DeepEqual(want, got) {
+			t.Error("bad preopen. want:", want, "got:", got)
+		}
+	})
+
+	t.Run("WithMapDir", func(t *testing.T) {
+		q, err := pl.QueryOnce(ctx, `directory_files("/foo", X)`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := []trealla.Term{".", "..", "foo.txt"}
+		got := q.Solution["X"]
+		if !reflect.DeepEqual(want, got) {
+			t.Error("bad preopen. want:", want, "got:", got)
+		}
+	})
+}
+
 func TestSyntaxError(t *testing.T) {
+	t.Parallel()
+
 	pl, err := trealla.New(trealla.WithPreopenDir("testdata"))
 	if err != nil {
 		t.Fatal(err)
@@ -305,6 +360,8 @@ func TestSyntaxError(t *testing.T) {
 }
 
 func TestBind(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 	pl, err := trealla.New()
 	if err != nil {

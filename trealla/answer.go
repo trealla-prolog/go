@@ -26,6 +26,7 @@ type response struct {
 }
 
 func (pl *prolog) parse(goal, stdout, stderr string) (Answer, error) {
+	// log.Println("parse:", goal, "stdout:", stdout, "stderr:", stderr)
 	if len(strings.TrimSpace(stdout)) == 0 {
 		return Answer{}, ErrFailure{Query: goal, Stderr: stderr}
 	}
@@ -40,6 +41,8 @@ func (pl *prolog) parse(goal, stdout, stderr string) (Answer, error) {
 	if nl >= 0 {
 		butt = nl
 	}
+
+	// fmt.Println("OUTPUT:", stdout)
 
 	output := stdout[start+1 : end]
 	js := stdout[end+1 : butt]
@@ -65,8 +68,10 @@ func (pl *prolog) parse(goal, stdout, stderr string) (Answer, error) {
 	dec := json.NewDecoder(strings.NewReader(js))
 	dec.UseNumber()
 	if err := dec.Decode(&resp); err != nil {
-		return resp.Answer, fmt.Errorf("trealla: decoding error: %w", err)
+		return resp.Answer, fmt.Errorf("trealla: decoding error: %w (resp = %s)", err, string(js))
 	}
+
+	// spew.Dump(resp)
 
 	switch resp.Status {
 	case statusSuccess:

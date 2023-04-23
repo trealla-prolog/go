@@ -2,8 +2,9 @@ package trealla
 
 import (
 	"encoding/binary"
+	"fmt"
 
-	"github.com/wasmerio/wasmer-go/wasmer"
+	"github.com/bytecodealliance/wasmtime-go/v8"
 )
 
 // Predicate is a Prolog predicate implemented in Go.
@@ -22,50 +23,25 @@ type Predicate func(pl Prolog, subquery Subquery, goal Term) Term
 // It is unique as long as the query is alive, but may be re-used later on.
 type Subquery int32
 
-func (pl *prolog) exports() map[string]wasmer.IntoExtern {
-	return map[string]wasmer.IntoExtern{
-		"host-call":   pl.host_call(),
-		"host-resume": pl.host_resume(),
+func (pl *prolog) hostCall( /*c *wasmtime.Caller,*/ subquery, msgptr, msgsize, reply_pp, replysize_p int32) (int32, *wasmtime.Trap) {
+	// extern int32_t host_call(int32_t subquery, const char *msg, size_t msg_size, char **reply, size_t *reply_size);
+
+	subq := pl.subquery(subquery)
+	if subq == nil {
+		return 0, wasmtime.NewTrap(fmt.Sprintf("could not find subquery: %d", subquery))
 	}
-}
-
-func (pl *prolog) host_call() *wasmer.Function {
-	return wasmer.NewFunctionWithEnvironment(wasmStore,
-		// extern int32_t host_call(int32_t subquery, const char *msg, size_t msg_size, char **reply, size_t *reply_size);
-		wasmer.NewFunctionType(
-			wasmer.NewValueTypes(wasmer.I32, wasmer.I32, wasmer.I32, wasmer.I32, wasmer.I32),
-			wasmer.NewValueTypes(wasmer.I32),
-		), pl, hostCall)
-}
-
-func (pl *prolog) host_resume() *wasmer.Function {
-	return wasmer.NewFunctionWithEnvironment(wasmStore,
-		// extern bool host_resume(int32_t subquery, char **reply, size_t *reply_size);
-		wasmer.NewFunctionType(
-			wasmer.NewValueTypes(wasmer.I32, wasmer.I32, wasmer.I32),
-			wasmer.NewValueTypes(wasmer.I32),
-		), pl, hostResume)
-}
-
-func hostCall(env any, args []wasmer.Value) ([]wasmer.Value, error) {
-	pl := env.(*prolog)
-	subquery := args[0].I32()
-	msgptr := args[1].I32()
-	msgsize := args[2].I32()
-	reply_pp := args[3].I32()
-	replysize_p := args[4].I32()
 
 	msgraw, err := pl.gets(msgptr, msgsize)
 	if err != nil {
-		return nil, err
+		return 0, wasmtime.NewTrap(err.Error())
 	}
 
 	msg, err := unmarshalTerm([]byte(msgraw))
 	if err != nil {
-		return nil, err
+		return 0, wasmtime.NewTrap(err.Error())
 	}
 
-	memory := pl.memory.Data()
+	memory := pl.memory.UnsafeData(pl.store)
 	reply := func(str string) error {
 		msg, err := newCString(pl, str)
 		if err != nil {
@@ -80,9 +56,9 @@ func hostCall(env any, args []wasmer.Value) ([]wasmer.Value, error) {
 	if !ok {
 		expr := typeError("atomic", msg, piTerm("$host_call", 2))
 		if err := reply(expr.String()); err != nil {
-			return nil, err
+			return 0, wasmtime.NewTrap(err.Error())
 		}
-		return []wasmer.Value{wasmTrue}, nil
+		return wasmTrue, nil
 	}
 
 	proc, ok := pl.procs[goal.Indicator()]
@@ -93,24 +69,38 @@ func hostCall(env any, args []wasmer.Value) ([]wasmer.Value, error) {
 				piTerm("$host_call", 2),
 			))
 		if err := reply(expr.String()); err != nil {
-			return nil, err
+			return 0, wasmtime.NewTrap(err.Error())
 		}
-		return []wasmer.Value{wasmTrue}, nil
+		return wasmTrue, nil
 	}
+
+	if err := subq.readOutput(); err != nil {
+		return 0, wasmtime.NewTrap(err.Error())
+	}
+	// log.Println("SAVING", subq.stderr.String())
 
 	locked := &lockedProlog{prolog: pl}
 	continuation := proc(locked, Subquery(subquery), goal)
 	locked.kill()
 	expr, err := marshal(continuation)
 	if err != nil {
-		return nil, err
+		return 0, wasmtime.NewTrap(err.Error())
 	}
 	if err := reply(expr); err != nil {
-		return nil, err
+		return 0, wasmtime.NewTrap(err.Error())
 	}
-	return []wasmer.Value{wasmTrue}, nil
+
+	if err := subq.readOutput(); err != nil {
+		return 0, wasmtime.NewTrap(err.Error())
+	}
+	if _, err := pl.pl_capture.Call(pl.store, pl.ptr); err != nil {
+		return 0, wasmtime.NewTrap(err.Error())
+	}
+
+	return wasmTrue, nil
 }
 
-func hostResume(_ any, args []wasmer.Value) ([]wasmer.Value, error) {
-	return []wasmer.Value{wasmFalse}, nil
+func hostResume(_, _, _ int32) (int32, *wasmtime.Trap) {
+	// extern int32_t host_resume(int32_t subquery, char **reply, size_t *reply_size);
+	return wasmFalse, nil
 }

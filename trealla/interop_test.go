@@ -9,7 +9,8 @@ import (
 )
 
 func TestInterop(t *testing.T) {
-	pl, err := New(WithDebugLog(log.Default()) /*WithStderrLog(log.Default()), WithStdoutLog(log.Default()), WithTrace() */)
+	pl, err := New(WithDebugLog(log.Default()))
+
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -21,11 +22,17 @@ func TestInterop(t *testing.T) {
 			t.Error("bad goal. want:", want, "got:", goal)
 		}
 
-		ans, err := pl.QueryOnce(ctx, "X is 1 + 1.")
+		ans1, err := pl.QueryOnce(ctx, "X is 1 + 1.")
 		if err != nil {
 			t.Error(err)
 		}
-		return Atom("interop_test").Of(ans.Solution["X"])
+
+		ans2, err := pl.QueryOnce(ctx, "Y is X + 1.", WithBind("X", ans1.Solution["X"]))
+		if err != nil {
+			t.Error(err)
+		}
+
+		return Atom("interop_test").Of(ans2.Solution["Y"])
 	})
 
 	tests := []struct {
@@ -57,7 +64,7 @@ func TestInterop(t *testing.T) {
 			want: []Answer{
 				{
 					Query:    `interop_test(X).`,
-					Solution: Substitution{"X": int64(2)},
+					Solution: Substitution{"X": int64(3)},
 				},
 			},
 		},
@@ -66,7 +73,7 @@ func TestInterop(t *testing.T) {
 		// 	want: []Answer{
 		// 		{
 		// 			Query:    `http_fetch("https://jsonplaceholder.typicode.com/todos/1", Result, [as(json)]).`,
-		// 			Solution: Substitution{"Result": Compound{Functor: "{}", Args: []Term{Compound{Functor: ",", Args: []Term{Compound{Functor: ":", Args: []Term{"userId", 1}}, Compound{Functor: ",", Args: []Term{Compound{Functor: ":", Args: []Term{"id", 1}}, Compound{Functor: ",", Args: []Term{Compound{Functor: ":", Args: []Term{"title", "delectus aut autem"}}, Compound{Functor: ":", Args: []Term{"completed", "false"}}}}}}}}}}},
+		// 			Solution: Substitution{"Result": Compound{Functor: "{}", Args: []Term{Compound{Functor: ",", Args: []Term{Compound{Functor: ":", Args: []Term{"userId", int64(1)}}, Compound{Functor: ",", Args: []Term{Compound{Functor: ":", Args: []Term{"id", int64(1)}}, Compound{Functor: ",", Args: []Term{Compound{Functor: ":", Args: []Term{"title", "delectus aut autem"}}, Compound{Functor: ":", Args: []Term{"completed", "false"}}}}}}}}}}},
 		// 		},
 		// 	},
 		// },
@@ -80,6 +87,7 @@ func TestInterop(t *testing.T) {
 			for q.Next(ctx) {
 				ans = append(ans, q.Current())
 			}
+			q.Close()
 			err := q.Err()
 			if tc.err == nil && err != nil {
 				t.Fatal(err)
