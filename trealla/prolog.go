@@ -232,6 +232,9 @@ func (pl *prolog) alloc(size int32) (int32, error) {
 	if !ok {
 		return 0, fmt.Errorf("unexpected return type for alloc: %T (%v)", ptrv, ptrv)
 	}
+	if ptr == 0 {
+		return 0, fmt.Errorf("trealla: failed to allocate wasm memory (out of memory?)")
+	}
 	return ptr, nil
 }
 
@@ -313,7 +316,7 @@ func (pl *prolog) indirect(pp int32) int32 {
 	}
 
 	data := pl.memory.UnsafeData(pl.store)
-	buf := bytes.NewBuffer(data[pp : pp+4])
+	buf := bytes.NewBuffer(data[uint32(pp):uint32(pp+ptrSize)])
 	var p int32
 	if err := binary.Read(buf, binary.LittleEndian, &p); err != nil {
 		return 0

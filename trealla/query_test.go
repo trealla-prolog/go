@@ -3,10 +3,12 @@ package trealla_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"math/big"
 	"os"
 	"reflect"
+	"sync"
 	"testing"
 
 	"github.com/trealla-prolog/go/trealla"
@@ -417,4 +419,35 @@ func TestBind(t *testing.T) {
 			t.Error("unexpected value. want:", want, "got:", x)
 		}
 	})
+}
+
+func TestConcurrent(t *testing.T) {
+	pl, err := trealla.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		// i := i
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ctx := context.Background()
+			q := pl.Query(ctx, "between(1,10,X)")
+			q.Next(ctx)
+			q.Next(ctx)
+			q.Next(ctx)
+			if err := q.Err(); err != nil {
+				panic(fmt.Sprintf("error: %v, %+v", err, pl.Stats()))
+			}
+			got := q.Current().Solution["X"]
+			want := int64(3)
+			if want != got {
+				t.Error("bad answer. want:", want, "got:", got)
+			}
+			q.Close()
+		}()
+	}
+	wg.Wait()
 }

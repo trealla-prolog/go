@@ -381,17 +381,15 @@ func (q *query) Close() error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
+	if q.lock {
+		q.pl.mu.Lock()
+		defer q.pl.mu.Unlock()
+	}
+
 	// log.Println("close", q.subquery)
 
 	if !q.done && q.subquery != 0 {
-		if q.lock {
-			q.pl.mu.Lock()
-		}
-		// log.Println("DONE", q.subquery)
 		q.pl.pl_done.Call(q.pl.store, q.subquery)
-		if q.lock {
-			q.pl.mu.Unlock()
-		}
 		q.done = true
 		q.subquery = 0
 	}

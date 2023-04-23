@@ -3,6 +3,7 @@ package trealla
 import (
 	"context"
 	"io"
+	"reflect"
 	"testing"
 )
 
@@ -33,6 +34,24 @@ func TestLeakCheck(t *testing.T) {
 			pl.Register(ctx, "interop_simple", 1, func(pl Prolog, subquery Subquery, goal Term) Term {
 				return Atom("interop_simple").Of(int64(42))
 			})
+			pl.Register(ctx, "interop_test", 1, func(pl Prolog, _ Subquery, goal Term) Term {
+				want := Atom("interop_test").Of(Variable{Name: "A"})
+				if !reflect.DeepEqual(want, goal) {
+					t.Error("bad goal. want:", want, "got:", goal)
+				}
+
+				ans1, err := pl.QueryOnce(ctx, "X is 1 + 1.")
+				if err != nil {
+					t.Error(err)
+				}
+
+				ans2, err := pl.QueryOnce(ctx, "Y is X + 1.", WithBind("X", ans1.Solution["X"]))
+				if err != nil {
+					t.Error(err)
+				}
+
+				return Atom("interop_test").Of(ans2.Solution["Y"])
+			})
 
 			size := 0
 			for i := 0; i < 2048; i++ {
@@ -60,5 +79,5 @@ func TestLeakCheck(t *testing.T) {
 	t.Run("output", check("write(stdout, abc), write(stderr, def) ; write(stdout, xyz), write(stderr, qux) ; 1=2."))
 
 	t.Run("simple interop", check("interop_simple(X)"))
-	// t.Run("complex interop", check("interop_query(X)"))
+	// t.Run("complex interop", check("interop_test(X)"))
 }
