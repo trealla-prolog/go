@@ -68,7 +68,7 @@ func (pl *prolog) parse(goal, stdout, stderr string) (Answer, error) {
 	dec := json.NewDecoder(strings.NewReader(js))
 	dec.UseNumber()
 	if err := dec.Decode(&resp); err != nil {
-		return resp.Answer, fmt.Errorf("trealla: decoding error: %w", err)
+		return resp.Answer, fmt.Errorf("trealla: decoding error: %w (resp = %s)", err, string(js))
 	}
 
 	// spew.Dump(resp)

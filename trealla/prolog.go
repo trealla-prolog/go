@@ -346,10 +346,6 @@ type Stats struct {
 	MemorySize int
 }
 
-func GetStats(pl Prolog) Stats {
-	return pl.Stats()
-}
-
 func (pl *prolog) Stats() Stats {
 	if pl.memory == nil || pl.store == nil {
 		return Stats{}

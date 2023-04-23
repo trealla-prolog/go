@@ -325,6 +325,8 @@ func TestPreopen(t *testing.T) {
 }
 
 func TestSyntaxError(t *testing.T) {
+	t.Parallel()
+
 	pl, err := trealla.New(trealla.WithPreopenDir("testdata"))
 	if err != nil {
 		t.Fatal(err)
@@ -358,6 +360,8 @@ func TestSyntaxError(t *testing.T) {
 }
 
 func TestBind(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 	pl, err := trealla.New()
 	if err != nil {

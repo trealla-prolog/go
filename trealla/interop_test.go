@@ -22,11 +22,17 @@ func TestInterop(t *testing.T) {
 			t.Error("bad goal. want:", want, "got:", goal)
 		}
 
-		ans, err := pl.QueryOnce(ctx, "X is 1 + 1.")
+		ans1, err := pl.QueryOnce(ctx, "X is 1 + 1.")
 		if err != nil {
 			t.Error(err)
 		}
-		return Atom("interop_test").Of(ans.Solution["X"])
+
+		ans2, err := pl.QueryOnce(ctx, "Y is X + 1.", WithBind("X", ans1.Solution["X"]))
+		if err != nil {
+			t.Error(err)
+		}
+
+		return Atom("interop_test").Of(ans2.Solution["Y"])
 	})
 
 	tests := []struct {
@@ -58,7 +64,7 @@ func TestInterop(t *testing.T) {
 			want: []Answer{
 				{
 					Query:    `interop_test(X).`,
-					Solution: Substitution{"X": int64(2)},
+					Solution: Substitution{"X": int64(3)},
 				},
 			},
 		},
