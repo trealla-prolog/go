@@ -210,8 +210,8 @@ func TestQuery(t *testing.T) {
 			// Note: currently it breaks if you forget to run set_output(stdout) at the end 🤔
 			want: []trealla.Answer{
 				{
-					Query:    "tell('/test.txt'), write(hello), X = 1",
-					Solution: trealla.Substitution{"X": int64(1)},
+					Query:    `tell('/testdata/test.txt'), write(hello), flush_output, X = 1, read_file_to_string("/testdata/test.txt", Content, []), delete_file("/testdata/test.txt")`,
+					Solution: trealla.Substitution{"X": int64(1), "Content": "hello"},
 				},
 			},
 		},
