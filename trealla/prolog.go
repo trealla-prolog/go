@@ -8,7 +8,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"runtime"
 	"sync"
@@ -42,14 +41,19 @@ type prolog struct {
 	wasi     *wasmtime.WasiConfig
 	memory   *wasmtime.Memory
 	closing  bool
+	running  map[int32]*query
+	spawning map[int32]*query
 
-	ptr               int32
-	realloc           wasmFunc
-	free              wasmFunc
-	pl_query_captured wasmFunc
-	pl_consult        wasmFunc
-	pl_redo_captured  wasmFunc
-	pl_done           wasmFunc
+	ptr             int32
+	realloc         wasmFunc
+	free            wasmFunc
+	pl_consult      wasmFunc
+	pl_capture_free wasmFunc
+	pl_capture      wasmFunc
+	pl_capture_read wasmFunc
+	pl_query        wasmFunc
+	pl_redo         wasmFunc
+	pl_done         wasmFunc
 
 	procs map[string]Predicate
 
@@ -66,21 +70,13 @@ type prolog struct {
 	mu *sync.Mutex
 }
 
-func (pl *prolog) Test() string {
-	if pl.store != nil {
-		if err := ioutil.WriteFile("x.raw", pl.memory.UnsafeData(pl.store), 0666); err != nil {
-			panic(err)
-		}
-		return fmt.Sprintf("%v", pl.memory.DataSize(pl.store))
-	}
-	return "<dead>"
-}
-
 // New creates a new Prolog interpreter.
 func New(opts ...Option) (Prolog, error) {
 	pl := &prolog{
-		procs: make(map[string]Predicate),
-		mu:    new(sync.Mutex),
+		running:  make(map[int32]*query),
+		spawning: make(map[int32]*query),
+		procs:    make(map[string]Predicate),
+		mu:       new(sync.Mutex),
 	}
 	for _, opt := range opts {
 		opt(pl)
@@ -154,9 +150,9 @@ func (pl *prolog) init() error {
 	}
 	pl.memory = mem
 
-	pl_global := instance.GetExport(pl.store, "pl_global").Func()
-	if pl_global == nil {
-		return errUnexported("pl_global", err)
+	pl_global, err := pl.function("pl_global")
+	if err != nil {
+		return err
 	}
 
 	ptr, err := pl_global.Call(pl.store)
@@ -165,34 +161,49 @@ func (pl *prolog) init() error {
 	}
 	pl.ptr = ptr.(int32)
 
-	pl.realloc = instance.GetExport(pl.store, "canonical_abi_realloc").Func()
-	if pl.realloc == nil {
-		return errUnexported("canonical_abi_realloc", err)
+	pl.realloc, err = pl.function("canonical_abi_realloc")
+	if err != nil {
+		return err
 	}
 
-	pl.free = instance.GetExport(pl.store, "canonical_abi_free").Func()
-	if pl.free == nil {
-		return errUnexported("canonical_abi_free", err)
+	pl.free, err = pl.function("canonical_abi_free")
+	if err != nil {
+		return err
 	}
 
-	pl.pl_query_captured = instance.GetExport(pl.store, "pl_query_captured").Func()
-	if pl.pl_query_captured == nil {
-		return errUnexported("pl_query_captured", err)
+	pl.pl_capture, err = pl.function("pl_capture")
+	if err != nil {
+		return err
 	}
 
-	pl.pl_redo_captured = instance.GetExport(pl.store, "pl_redo_captured").Func()
-	if pl.pl_redo_captured == nil {
-		return errUnexported("pl_redo_captured", err)
+	pl.pl_capture_read, err = pl.function("pl_capture_read")
+	if err != nil {
+		return err
 	}
 
-	pl.pl_done = instance.GetExport(pl.store, "pl_done").Func()
-	if pl.pl_done == nil {
-		return errUnexported("pl_done", err)
+	pl.pl_capture_free, err = pl.function("pl_capture_free")
+	if err != nil {
+		return err
 	}
 
-	pl.pl_consult = instance.GetExport(pl.store, "pl_consult").Func()
-	if pl.pl_consult == nil {
-		return errUnexported("pl_consult", err)
+	pl.pl_query, err = pl.function("pl_query")
+	if err != nil {
+		return err
+	}
+
+	pl.pl_redo, err = pl.function("pl_redo")
+	if err != nil {
+		return err
+	}
+
+	pl.pl_done, err = pl.function("pl_done")
+	if err != nil {
+		return err
+	}
+
+	pl.pl_consult, err = pl.function("pl_consult")
+	if err != nil {
+		return err
 	}
 
 	if err := pl.loadBuiltins(); err != nil {
@@ -201,6 +212,40 @@ func (pl *prolog) init() error {
 
 	runtime.SetFinalizer(pl, finalizeProlog)
 
+	return nil
+}
+
+func (pl *prolog) function(symbol string) (wasmFunc, error) {
+	export := pl.instance.GetExport(pl.store, symbol)
+	if export == nil {
+		return nil, errUnexported(symbol)
+	}
+	return export.Func(), nil
+}
+
+func (pl *prolog) alloc(size int32) (int32, error) {
+	ptrv, err := pl.realloc.Call(pl.store, 0, 0, align, size)
+	if err != nil {
+		return 0, err
+	}
+	ptr, ok := ptrv.(int32)
+	if !ok {
+		return 0, fmt.Errorf("unexpected return type for alloc: %T (%v)", ptrv, ptrv)
+	}
+	return ptr, nil
+}
+
+func (pl *prolog) subquery(addr int32) *query {
+	if q, ok := pl.running[addr]; ok {
+		return q
+	}
+	for spawn, q := range pl.spawning {
+		if ptr := pl.indirect(spawn); ptr != 0 {
+			if ptr == addr {
+				return q
+			}
+		}
+	}
 	return nil
 }
 
@@ -262,15 +307,19 @@ func (pl *prolog) consult(filename string) error {
 	return nil
 }
 
-func (pl *prolog) indirect(pp int32) (int32, error) {
+func (pl *prolog) indirect(pp int32) int32 {
+	if pp == 0 {
+		return 0
+	}
+
 	data := pl.memory.UnsafeData(pl.store)
 	buf := bytes.NewBuffer(data[pp : pp+4])
 	var p int32
 	if err := binary.Read(buf, binary.LittleEndian, &p); err != nil {
-		return 0, fmt.Errorf("trealla: couldn't indirect pointer: %d", pp)
+		return 0
 	}
 	runtime.KeepAlive(data)
-	return p, nil
+	return p
 }
 
 func (pl *prolog) Register(ctx context.Context, name string, arity int, proc Predicate) error {

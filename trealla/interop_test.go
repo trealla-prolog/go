@@ -6,10 +6,13 @@ import (
 	"log"
 	"reflect"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestInterop(t *testing.T) {
-	pl, err := New(WithDebugLog(log.Default()) /*WithStderrLog(log.Default()), WithStdoutLog(log.Default()), WithTrace() */)
+	pl, err := New(WithDebugLog(log.Default()))
+
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,21 +55,21 @@ func TestInterop(t *testing.T) {
 				},
 			},
 		},
-		// {
-		// 	name: "custom function",
-		// 	want: []Answer{
-		// 		{
-		// 			Query:    `interop_test(X).`,
-		// 			Solution: Substitution{"X": int64(2)},
-		// 		},
-		// 	},
-		// },
+		{
+			name: "custom function",
+			want: []Answer{
+				{
+					Query:    `interop_test(X).`,
+					Solution: Substitution{"X": int64(2)},
+				},
+			},
+		},
 		// {
 		// 	name: "http_fetch/3",
 		// 	want: []Answer{
 		// 		{
 		// 			Query:    `http_fetch("https://jsonplaceholder.typicode.com/todos/1", Result, [as(json)]).`,
-		// 			Solution: Substitution{"Result": Compound{Functor: "{}", Args: []Term{Compound{Functor: ",", Args: []Term{Compound{Functor: ":", Args: []Term{"userId", 1}}, Compound{Functor: ",", Args: []Term{Compound{Functor: ":", Args: []Term{"id", 1}}, Compound{Functor: ",", Args: []Term{Compound{Functor: ":", Args: []Term{"title", "delectus aut autem"}}, Compound{Functor: ":", Args: []Term{"completed", "false"}}}}}}}}}}},
+		// 			Solution: Substitution{"Result": Compound{Functor: "{}", Args: []Term{Compound{Functor: ",", Args: []Term{Compound{Functor: ":", Args: []Term{"userId", int64(1)}}, Compound{Functor: ",", Args: []Term{Compound{Functor: ":", Args: []Term{"id", int64(1)}}, Compound{Functor: ",", Args: []Term{Compound{Functor: ":", Args: []Term{"title", "delectus aut autem"}}, Compound{Functor: ":", Args: []Term{"completed", "false"}}}}}}}}}}},
 		// 		},
 		// 	},
 		// },
@@ -80,15 +83,19 @@ func TestInterop(t *testing.T) {
 			for q.Next(ctx) {
 				ans = append(ans, q.Current())
 			}
+			q.Close()
 			err := q.Err()
 			if tc.err == nil && err != nil {
 				t.Fatal(err)
 			} else if tc.err != nil && !errors.Is(err, tc.err) {
 				t.Errorf("unexpected error: %#v (%v) ", err, err)
 			}
-			if tc.err == nil && !reflect.DeepEqual(ans, tc.want) {
-				t.Errorf("bad answer. \nwant: %#v\ngot: %#v\n", tc.want, ans)
+			if diff := cmp.Diff(tc.want, ans); diff != "" {
+				t.Error(diff)
 			}
+			// if tc.err == nil && !reflect.DeepEqual(ans, tc.want) {
+			// 	t.Errorf("bad answer. \nwant: %#v\ngot: %#v\n", tc.want, ans)
+			// }
 		})
 	}
 }

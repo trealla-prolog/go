@@ -206,6 +206,16 @@ func TestQuery(t *testing.T) {
 			},
 		},
 		{
+			name: "set_output",
+			// Note: currently it breaks if you forget to run set_output(stdout) at the end 🤔
+			want: []trealla.Answer{
+				{
+					Query:    "tell('/test.txt'), write(hello), X = 1",
+					Solution: trealla.Substitution{"X": int64(1)},
+				},
+			},
+		},
+		{
 			name: "residual goals",
 			want: []trealla.Answer{
 				{
@@ -283,21 +293,37 @@ func TestThrow(t *testing.T) {
 	}
 }
 
-// func TestPreopen(t *testing.T) {
-// 	pl, err := trealla.New(trealla.WithMapDir("/testdata", "testdata"))
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
+func TestPreopen(t *testing.T) {
+	pl, err := trealla.New(trealla.WithPreopenDir("testdata"), trealla.WithMapDir("/foo", "testdata/subdirectory"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
 
-// 	ctx := context.Background()
-// 	q, err := pl.QueryOnce(ctx, `directory_files(".", X)`)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
+	t.Run("WithPreopenDir", func(t *testing.T) {
+		q, err := pl.QueryOnce(ctx, `directory_files("/", X)`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := []trealla.Term{".", "..", "subdirectory", "greeting.pl", "tak.pl"}
+		got := q.Solution["X"]
+		if !reflect.DeepEqual(want, got) {
+			t.Error("bad preopen. want:", want, "got:", got)
+		}
+	})
 
-// 	spew.Dump(q)
-// 	t.Fail()
-// }
+	t.Run("WithMapDir", func(t *testing.T) {
+		q, err := pl.QueryOnce(ctx, `directory_files("/foo", X)`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := []trealla.Term{".", "..", "foo.txt"}
+		got := q.Solution["X"]
+		if !reflect.DeepEqual(want, got) {
+			t.Error("bad preopen. want:", want, "got:", got)
+		}
+	})
+}
 
 func TestSyntaxError(t *testing.T) {
 	pl, err := trealla.New(trealla.WithPreopenDir("testdata"))

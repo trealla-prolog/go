@@ -2,6 +2,7 @@ package trealla
 
 import (
 	"encoding/binary"
+	"fmt"
 
 	"github.com/bytecodealliance/wasmtime-go/v8"
 )
@@ -22,62 +23,13 @@ type Predicate func(pl Prolog, subquery Subquery, goal Term) Term
 // It is unique as long as the query is alive, but may be re-used later on.
 type Subquery int32
 
-// func (pl *prolog) exports() map[string]wasmer.IntoExtern {
-// 	return map[string]wasmer.IntoExtern{
-// 		"host-call":   pl.host_call(),
-// 		"host-resume": pl.host_resume(),
-// 	}
-// }
-
-// func (pl *prolog) exports() []*wasmtime.ImportType {
-
-// 	// return []*wasmtime.ImportType{
-// 	// 	wasmtime.NewImportType("trealla", "host-call", pl.host_call()),
-// 	// }
-// 	// return map[string]wasmtime.ImportType{
-// 	// 	wasmtime.NewImportType(),
-// 	// 	"host-call":   pl.host_call(),
-// 	// 	"host-resume": pl.host_resume(),
-// 	// }
-// }
-
-// func (pl *prolog) host_call() *wasmtime.FuncType {
-// 	// extern int32_t host_call(int32_t subquery, const char *msg, size_t msg_size, char **reply, size_t *reply_size);
-// 	return wasmtime.NewFuncType([]*wasmtime.ValType{
-// 		wasmtime.NewValType(wasmtime.KindI32),
-// 		wasmtime.NewValType(wasmtime.KindI32),
-// 		wasmtime.NewValType(wasmtime.KindI32),
-// 		wasmtime.NewValType(wasmtime.KindI32),
-// 		wasmtime.NewValType(wasmtime.KindI32),
-// 	}, []*wasmtime.ValType{
-// 		wasmtime.NewValType(wasmtime.KindI32),
-// 	})
-// }
-
-// func (pl *prolog) host_resume() *wasmtime.FuncType {
-// 	return wasmtime.NewFuncType([]*wasmtime.ValType{
-// 		wasmtime.NewValType(wasmtime.KindI32),
-// 		wasmtime.NewValType(wasmtime.KindI32),
-// 		wasmtime.NewValType(wasmtime.KindI32),
-// 		wasmtime.NewValType(wasmtime.KindI32),
-// 		wasmtime.NewValType(wasmtime.KindI32),
-// 	}, []*wasmtime.ValType{
-// 		wasmtime.NewValType(wasmtime.KindI32),
-// 	})
-// 	return wasmer.NewFunctionWithEnvironment(wasmStore,
-// 		// extern bool host_resume(int32_t subquery, char **reply, size_t *reply_size);
-// 		wasmer.NewFunctionType(
-// 			wasmer.NewValueTypes(wasmer.I32, wasmer.I32, wasmer.I32),
-// 			wasmer.NewValueTypes(wasmer.I32),
-// 		), pl, hostResume)
-// }
-
 func (pl *prolog) hostCall( /*c *wasmtime.Caller,*/ subquery, msgptr, msgsize, reply_pp, replysize_p int32) (int32, *wasmtime.Trap) {
-	// subquery := args[0].I32()
-	// msgptr := args[1].I32()
-	// msgsize := args[2].I32()
-	// reply_pp := args[3].I32()
-	// replysize_p := args[4].I32()
+	// extern int32_t host_call(int32_t subquery, const char *msg, size_t msg_size, char **reply, size_t *reply_size);
+
+	subq := pl.subquery(subquery)
+	if subq == nil {
+		return 0, wasmtime.NewTrap(fmt.Sprintf("could not find subquery: %d", subquery))
+	}
 
 	msgraw, err := pl.gets(msgptr, msgsize)
 	if err != nil {
@@ -122,6 +74,11 @@ func (pl *prolog) hostCall( /*c *wasmtime.Caller,*/ subquery, msgptr, msgsize, r
 		return wasmTrue, nil
 	}
 
+	if err := subq.readOutput(); err != nil {
+		return 0, wasmtime.NewTrap(err.Error())
+	}
+	// log.Println("SAVING", subq.stderr.String())
+
 	locked := &lockedProlog{prolog: pl}
 	continuation := proc(locked, Subquery(subquery), goal)
 	locked.kill()
@@ -132,6 +89,14 @@ func (pl *prolog) hostCall( /*c *wasmtime.Caller,*/ subquery, msgptr, msgsize, r
 	if err := reply(expr); err != nil {
 		return 0, wasmtime.NewTrap(err.Error())
 	}
+
+	if err := subq.readOutput(); err != nil {
+		return 0, wasmtime.NewTrap(err.Error())
+	}
+	if _, err := pl.pl_capture.Call(pl.store, pl.ptr); err != nil {
+		return 0, wasmtime.NewTrap(err.Error())
+	}
+
 	return wasmTrue, nil
 }
 

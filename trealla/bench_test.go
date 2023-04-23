@@ -24,7 +24,7 @@ func BenchmarkQuery(b *testing.B) {
 	}
 }
 
-func BenchmarkOverhead(b *testing.B) {
+func BenchmarkNewProlog(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		pl, err := New()
 		if err != nil {

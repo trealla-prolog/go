@@ -41,4 +41,12 @@ var (
 
 	wasmFalse int32 = 0
 	wasmTrue  int32 = 1
+	// wasmYield int32 = 2
 )
+
+const (
+	ptrSize = 4
+	align   = 1
+)
+
+type int_t = int32
