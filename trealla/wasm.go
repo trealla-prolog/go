@@ -35,18 +35,13 @@ func init() {
 }
 
 var (
-	// wasm_null  = wasmer.NewI32(0)
-	// wasmFalse = wasmer.NewI32(0)
-	// wasmTrue  = wasmer.NewI32(1)
-
 	wasmFalse int32 = 0
 	wasmTrue  int32 = 1
-	// wasmYield int32 = 2
 )
+
+// type wint = int32
 
 const (
 	ptrSize = 4
 	align   = 1
 )
-
-type int_t = int32
