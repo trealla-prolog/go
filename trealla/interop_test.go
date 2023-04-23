@@ -6,8 +6,6 @@ import (
 	"log"
 	"reflect"
 	"testing"
-
-	"github.com/google/go-cmp/cmp"
 )
 
 func TestInterop(t *testing.T) {
@@ -90,12 +88,9 @@ func TestInterop(t *testing.T) {
 			} else if tc.err != nil && !errors.Is(err, tc.err) {
 				t.Errorf("unexpected error: %#v (%v) ", err, err)
 			}
-			if diff := cmp.Diff(tc.want, ans); diff != "" {
-				t.Error(diff)
+			if tc.err == nil && !reflect.DeepEqual(ans, tc.want) {
+				t.Errorf("bad answer. \nwant: %#v\ngot: %#v\n", tc.want, ans)
 			}
-			// if tc.err == nil && !reflect.DeepEqual(ans, tc.want) {
-			// 	t.Errorf("bad answer. \nwant: %#v\ngot: %#v\n", tc.want, ans)
-			// }
 		})
 	}
 }
