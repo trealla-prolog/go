@@ -26,8 +26,8 @@ func newCString(pl *prolog, str string) (*cstring, error) {
 
 	data := pl.memory.UnsafeData(pl.store)
 	ptr := int(cstr.ptr)
-	copy(data[ptr:], []byte(str))
-	data[ptr+len(str)] = 0
+	copy(data[uint32(ptr):], []byte(str))
+	data[int(uint32(ptr))+len(str)] = 0
 	return cstr, nil
 }
 
