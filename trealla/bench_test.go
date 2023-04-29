@@ -2,6 +2,7 @@ package trealla
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -32,6 +33,24 @@ func BenchmarkNewProlog(b *testing.B) {
 		}
 		_ = pl
 		pl.Close()
+	}
+}
+
+func BenchmarkClone(b *testing.B) {
+	pl, err := New()
+	if err != nil {
+		b.Fatal(err)
+	}
+	if err := pl.ConsultText(context.Background(), "user", strings.Repeat("hello(world). ", 1024)); err != nil {
+		b.Fatal(err)
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		clone, err := New()
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = clone
 	}
 }
 

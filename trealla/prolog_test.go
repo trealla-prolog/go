@@ -19,6 +19,42 @@ func TestClose(t *testing.T) {
 	}
 }
 
+func TestClone(t *testing.T) {
+	pl, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := pl.ConsultText(context.Background(), "user", `abc("xyz").`); err != nil {
+		t.Fatal(err)
+	}
+	clone, err := pl.Clone()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ans, err := clone.QueryOnce(context.Background(), "abc(X).")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Term("xyz")
+	got := ans.Solution["X"]
+	if want != got {
+		t.Error("want:", want, "got:", got)
+	}
+	t.Log(ans)
+
+	if err := pl.ConsultText(context.Background(), "user", `foo(bar).`); err != nil {
+		t.Error(err)
+	}
+
+	_, err = clone.QueryOnce(context.Background(), "foo(X).")
+	if err == nil {
+		t.Error("expected error, got:", err)
+	}
+	if _, ok := err.(ErrThrow); !ok {
+		t.Error("expected throw, got:", err)
+	}
+}
+
 func TestLeakCheck(t *testing.T) {
 	check := func(goal string) func(t *testing.T) {
 		return func(t *testing.T) {

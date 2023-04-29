@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"github.com/bytecodealliance/wasmtime-go/v8"
+	"golang.org/x/exp/maps"
 )
 
 // Prolog is a Prolog interpreter.
@@ -28,6 +29,8 @@ type Prolog interface {
 	// Register a native Go predicate.
 	// NOTE: this is *experimental* and its API will likely change.
 	Register(ctx context.Context, name string, arity int, predicate Predicate) error
+	//
+	Clone() (Prolog, error)
 	// Close destroys the Prolog instance.
 	// If this isn't called and the Prolog variable goes out of scope, runtime finalizers will try to free the memory.
 	Close()
@@ -81,7 +84,7 @@ func New(opts ...Option) (Prolog, error) {
 	for _, opt := range opts {
 		opt(pl)
 	}
-	return pl, pl.init()
+	return pl, pl.init(nil)
 }
 
 func (pl *prolog) argv() []string {
@@ -98,7 +101,7 @@ func (pl *prolog) argv() []string {
 	return args
 }
 
-func (pl *prolog) init() error {
+func (pl *prolog) init(clone *prolog) error {
 	argv := pl.argv()
 	wasi := wasmtime.NewWasiConfig()
 	wasi.SetArgv(argv)
@@ -136,12 +139,14 @@ func (pl *prolog) init() error {
 
 	// run once to initialize global interpreter
 
-	start := instance.GetExport(pl.store, "_start")
-	if start == nil {
-		return fmt.Errorf("trealla: failed to get start function")
-	}
-	if _, err := start.Func().Call(pl.store); err != nil {
-		return fmt.Errorf("trealla: failed to initialize: %w", err)
+	if clone == nil {
+		start := instance.GetExport(pl.store, "_start")
+		if start == nil {
+			return fmt.Errorf("trealla: failed to get start function")
+		}
+		if _, err := start.Func().Call(pl.store); err != nil {
+			return fmt.Errorf("trealla: failed to initialize: %w", err)
+		}
 	}
 
 	mem := instance.GetExport(pl.store, "memory").Memory()
@@ -149,17 +154,6 @@ func (pl *prolog) init() error {
 		return fmt.Errorf("trealla: failed to get memory")
 	}
 	pl.memory = mem
-
-	pl_global, err := pl.function("pl_global")
-	if err != nil {
-		return err
-	}
-
-	ptr, err := pl_global.Call(pl.store)
-	if err != nil {
-		return fmt.Errorf("trealla: failed to get interpreter: %w", err)
-	}
-	pl.ptr = ptr.(int32)
 
 	pl.realloc, err = pl.function("canonical_abi_realloc")
 	if err != nil {
@@ -206,13 +200,61 @@ func (pl *prolog) init() error {
 		return err
 	}
 
-	if err := pl.loadBuiltins(); err != nil {
-		return fmt.Errorf("trealla: failed to load builtins: %w", err)
+	if clone != nil {
+		if pl.ptr == 0 {
+			runtime.SetFinalizer(pl, finalizeProlog)
+		}
+		pl.ptr = clone.ptr
+		pl.mu = new(sync.Mutex)
+		pl.running = maps.Clone(clone.running)
+		pl.spawning = maps.Clone(clone.spawning)
+		pl.procs = maps.Clone(pl.procs)
+		pl.preopen = clone.preopen
+		pl.dirs = clone.dirs
+		pl.library = clone.library
+		pl.quiet = clone.quiet
+		pl.trace = clone.trace
+		pl.debug = clone.debug
+
+		delta := clone.memory.Size(clone.store) - pl.memory.Size(pl.store)
+		if delta > 0 {
+			if _, err := pl.memory.Grow(pl.store, delta); err != nil {
+				return err
+			}
+		}
+		copy(pl.memory.UnsafeData(pl.store), clone.memory.UnsafeData(clone.store))
+		return nil
 	}
 
 	runtime.SetFinalizer(pl, finalizeProlog)
 
+	pl_global, err := pl.function("pl_global")
+	if err != nil {
+		return err
+	}
+	ptr, err := pl_global.Call(pl.store)
+	if err != nil {
+		return fmt.Errorf("trealla: failed to get interpreter: %w", err)
+	}
+	pl.ptr = ptr.(int32)
+
+	if err := pl.loadBuiltins(); err != nil {
+		return fmt.Errorf("trealla: failed to load builtins: %w", err)
+	}
+
 	return nil
+}
+
+func (pl *prolog) Clone() (Prolog, error) {
+	pl.mu.Lock()
+	defer pl.mu.Unlock()
+	return pl.clone()
+}
+
+func (pl *prolog) clone() (*prolog, error) {
+	clone := new(prolog)
+	err := clone.init(pl)
+	return clone, err
 }
 
 func (pl *prolog) function(symbol string) (wasmFunc, error) {
@@ -321,7 +363,6 @@ func (pl *prolog) indirect(pp int32) int32 {
 	if err := binary.Read(buf, binary.LittleEndian, &p); err != nil {
 		return 0
 	}
-	runtime.KeepAlive(data)
 	return p
 }
 
@@ -383,6 +424,13 @@ func (pl *lockedProlog) ensure() error {
 	return nil
 }
 
+func (pl *lockedProlog) Clone() (Prolog, error) {
+	if err := pl.ensure(); err != nil {
+		return nil, err
+	}
+	return pl.prolog.clone()
+}
+
 func (pl *lockedProlog) Query(ctx context.Context, ask string, options ...QueryOption) Query {
 	if err := pl.ensure(); err != nil {
 		return &query{err: err}
@@ -419,10 +467,16 @@ func (pl *lockedProlog) Register(ctx context.Context, name string, arity int, pr
 }
 
 func (pl *lockedProlog) Close() {
+	if err := pl.ensure(); err != nil {
+		return
+	}
 	pl.prolog.closing = true
 }
 
 func (pl *lockedProlog) Stats() Stats {
+	if err := pl.ensure(); err != nil {
+		return Stats{}
+	}
 	return pl.prolog.stats()
 }
 
