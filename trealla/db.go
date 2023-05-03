@@ -1,3 +1,5 @@
+//go:build experiment
+
 package trealla
 
 import (
@@ -5,11 +7,10 @@ import (
 )
 
 type DB struct {
-	mother *prolog
-	pool   *sync.Pool
-	tx     int
-	mu     *sync.RWMutex
-	// ch     chan struct{}
+	canon *prolog
+	pool  *sync.Pool
+	tx    int
+	mu    *sync.RWMutex
 }
 
 func NewDB() (*DB, error) {
@@ -18,14 +19,11 @@ func NewDB() (*DB, error) {
 		return nil, err
 	}
 	db := &DB{
-		mother: pl.(*prolog),
-		pool:   new(sync.Pool),
-		mu:     new(sync.RWMutex),
-		// ch:     make(chan struct{}, 25),
+		canon: pl.(*prolog),
+		pool:  new(sync.Pool),
+		mu:    new(sync.RWMutex),
 	}
 	db.pool.New = func() any {
-		// db.ch <- struct{}{}
-		// defer func() { <-db.ch }()
 		ch, err := db.spawn()
 		if err != nil {
 			panic(err)
@@ -42,7 +40,7 @@ func NewDB() (*DB, error) {
 func (db *DB) WriteTx(tx func(Prolog) error) error {
 	db.mu.Lock()
 	defer db.mu.Unlock()
-	pl := &lockedProlog{prolog: db.mother}
+	pl := &lockedProlog{prolog: db.canon}
 	db.tx++
 	err := tx(pl)
 	return err
@@ -63,7 +61,7 @@ func (db *DB) ReadTx(tx func(Prolog) error) error {
 func (db *DB) child() (*child, error) {
 	child := db.pool.Get().(*child)
 	if child.tx < db.tx {
-		if err := child.prolog.init(db.mother); err != nil {
+		if err := child.prolog.init(db.canon); err != nil {
 			return nil, err
 		}
 		child.tx = db.tx
@@ -89,7 +87,7 @@ func (c *child) done(db *DB) {
 }
 
 func (db *DB) spawn() (*child, error) {
-	pl, err := db.mother.clone()
+	pl, err := db.canon.clone()
 	if err != nil {
 		return nil, err
 	}
@@ -98,5 +96,3 @@ func (db *DB) spawn() (*child, error) {
 		tx:           db.tx,
 	}, nil
 }
-
-// func ()

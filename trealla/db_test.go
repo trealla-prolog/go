@@ -1,3 +1,5 @@
+//go:build experiment
+
 package trealla
 
 import (
