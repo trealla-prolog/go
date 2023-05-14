@@ -176,6 +176,9 @@ func (pl *prolog) start(ctx context.Context, goal string, options ...QueryOption
 		return q
 	}
 	pl.spawning[subqptr] = q
+	defer func(ptr int32) {
+		delete(pl.spawning, subqptr)
+	}(subqptr)
 	defer pl.free.Call(pl.store, subqptr, 4, 1)
 
 	if err := q.allocCapture(); err != nil {
@@ -212,7 +215,6 @@ func (pl *prolog) start(ctx context.Context, goal string, options ...QueryOption
 
 	case err := <-ch:
 		q.done = ret == 0
-		delete(pl.spawning, subqptr)
 
 		if err != nil {
 			q.setError(fmt.Errorf("trealla: query error: %w", err))
@@ -386,7 +388,9 @@ func (q *query) Close() error {
 		defer q.pl.mu.Unlock()
 	}
 
-	// log.Println("close", q.subquery)
+	if q.subquery != 0 {
+		delete(q.pl.running, q.subquery)
+	}
 
 	if !q.done && q.subquery != 0 {
 		q.pl.pl_done.Call(q.pl.store, q.subquery)
