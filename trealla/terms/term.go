@@ -3,6 +3,8 @@
 package terms
 
 import (
+	"math/big"
+
 	"github.com/trealla-prolog/go/trealla"
 )
 
@@ -41,6 +43,20 @@ func Throw(ball trealla.Term) trealla.Compound {
 	return trealla.Compound{Functor: "throw", Args: []trealla.Term{ball}}
 }
 
+// PI returns the predicate indicator for the given term as a compound of //2, such as some_atom/0.
+// Returns nil for incompatible terms.
+func PI(atomic trealla.Term) trealla.Term {
+	switch x := atomic.(type) {
+	case trealla.Atom:
+		return trealla.Compound{Functor: "/", Args: []trealla.Term{x, int64(0)}}
+	case trealla.Compound:
+		return trealla.Compound{Functor: "/", Args: []trealla.Term{x.Functor, int64(len(x.Args))}}
+	case string, []trealla.Term, []any, []string, []int64, []int, []float64, []*big.Int, []trealla.Atom, []trealla.Compound, []trealla.Variable:
+		return trealla.Compound{Functor: "/", Args: []trealla.Term{trealla.Atom("."), int64(2)}}
+	}
+	return nil
+}
+
 // ResolveOption searches through "options lists" in the form of `[foo(V1), bar(V2), ...]`
 // as seen in open/4. It returns the argument of the compound matching functor,
 // or if not found returns fallback.
@@ -74,7 +90,7 @@ func ResolveOption[T trealla.Term](opts trealla.Term, functor trealla.Atom, fall
 
 func IsList(x trealla.Term) bool {
 	switch x := x.(type) {
-	case []trealla.Term:
+	case string, []trealla.Term, []any, []string, []int64, []int, []float64, []*big.Int, []trealla.Atom, []trealla.Compound, []trealla.Variable:
 		return true
 	case trealla.Atom:
 		return x == "[]"
