@@ -51,7 +51,7 @@ type query struct {
 // Query executes a query, returning an iterator for results.
 func (pl *prolog) Query(ctx context.Context, goal string, options ...QueryOption) Query {
 	q := pl.start(ctx, goal, options...)
-	runtime.SetFinalizer(q, finalizeQuery)
+	runtime.SetFinalizer(q, (*query).Close)
 	return q
 }
 
@@ -462,10 +462,6 @@ func (q *query) Err() error {
 func escapeQuery(query string) string {
 	query = queryEscaper.Replace(query)
 	return fmt.Sprintf(`js_ask(%s).`, escapeString(query))
-}
-
-func finalizeQuery(q *query) {
-	q.Close()
 }
 
 // QueryOption is an optional parameter for queries.

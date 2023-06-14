@@ -202,7 +202,7 @@ func (pl *prolog) init(clone *prolog) error {
 
 	if clone != nil {
 		if pl.ptr == 0 {
-			runtime.SetFinalizer(pl, finalizeProlog)
+			runtime.SetFinalizer(pl, (*prolog).Close)
 		}
 		pl.ptr = clone.ptr
 		pl.mu = new(sync.Mutex)
@@ -226,7 +226,7 @@ func (pl *prolog) init(clone *prolog) error {
 		return nil
 	}
 
-	runtime.SetFinalizer(pl, finalizeProlog)
+	runtime.SetFinalizer(pl, (*prolog).Close)
 
 	pl_global, err := pl.function("pl_global")
 	if err != nil {
@@ -301,10 +301,6 @@ func (pl *prolog) Close() {
 	pl.memory = nil
 	pl.store = nil
 	pl.wasi = nil
-}
-
-func finalizeProlog(pl *prolog) {
-	pl.Close()
 }
 
 func (pl *prolog) ConsultText(ctx context.Context, module, text string) error {
