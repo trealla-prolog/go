@@ -222,30 +222,13 @@ func TestQuery(t *testing.T) {
 				{
 					Query: "dif(X, Y).",
 					Solution: trealla.Substitution{
-						"X": trealla.Variable{
-							Name: "X",
-							Attr: []trealla.Term{
-								trealla.Compound{
-									Functor: "dif",
-									Args:    []trealla.Term{trealla.Variable{Name: "X"}, trealla.Variable{Name: "Y"}},
-								},
-							},
-						},
-						"Y": trealla.Variable{
-							Name: "Y",
-							Attr: []trealla.Term{
-								trealla.Compound{
-									Functor: "dif",
-									Args:    []trealla.Term{trealla.Variable{Name: "X"}, trealla.Variable{Name: "Y"}},
-								},
-							},
-						},
+						"X": trealla.Variable{Name: "X", Attr: []trealla.Term{trealla.Compound{Functor: ":", Args: []trealla.Term{trealla.Atom("dif"), trealla.Compound{Functor: "dif", Args: []trealla.Term{trealla.Variable{Name: "X"}, trealla.Variable{Name: "Y"}}}}}}},
+						"Y": trealla.Variable{Name: "Y", Attr: []trealla.Term{[]trealla.Term{}}},
 					},
 				},
 			},
 		},
 	}
-
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
@@ -261,7 +244,7 @@ func TestQuery(t *testing.T) {
 				t.Errorf("unexpected error: %#v (%v) ", err, err)
 			}
 			if tc.err == nil && !reflect.DeepEqual(ans, tc.want) {
-				t.Errorf("bad answer. \nwant: %#v\ngot: %#v\n", tc.want, ans)
+				t.Errorf("bad answer. \nwant: %#v\n got: %#v\n", tc.want, ans)
 			}
 		})
 	}
