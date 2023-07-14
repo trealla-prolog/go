@@ -3,13 +3,12 @@ package trealla
 import (
 	_ "embed"
 
-	"github.com/bytecodealliance/wasmtime-go/v8"
+	"github.com/bytecodealliance/wasmtime-go/v9"
 )
 
 //go:embed libtpl.wasm
 var tplWASM []byte
 
-// type wasmFunc func(...any) (any, error)
 type wasmFunc = *wasmtime.Func
 
 var wasmEngine *wasmtime.Engine

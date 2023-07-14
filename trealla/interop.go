@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/bytecodealliance/wasmtime-go/v8"
+	"github.com/bytecodealliance/wasmtime-go/v9"
 )
 
 // Predicate is a Prolog predicate implemented in Go.
@@ -52,7 +52,7 @@ func (pl *prolog) hostCall( /*c *wasmtime.Caller,*/ subquery, msgptr, msgsize, r
 		return nil
 	}
 
-	goal, ok := msg.(atomic)
+	goal, ok := msg.(atomicTerm)
 	if !ok {
 		expr := typeError("atomic", msg, piTerm("$host_call", 2))
 		if err := reply(expr.String()); err != nil {

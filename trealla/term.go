@@ -145,7 +145,7 @@ func piTerm(functor Atom, arity int) Compound {
 	return Compound{Functor: "/", Args: []Term{functor, int64(arity)}}
 }
 
-type atomic interface {
+type atomicTerm interface {
 	Term
 	Indicator() string
 	pi() Compound
