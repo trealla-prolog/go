@@ -86,6 +86,7 @@ func Example_register() {
 		case trealla.Variable: // ok
 		default:
 			// throw(error(type_error(list, X), base32/2)).
+			// See: terms subpackage for convenience functions to create these errors.
 			return trealla.Atom("throw").Of(trealla.Atom("error").Of(
 				trealla.Atom("type_error").Of("list", goal.Args[0]),
 				trealla.Atom("/").Of(trealla.Atom("base32"), 2),
