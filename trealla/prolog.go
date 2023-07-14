@@ -257,6 +257,17 @@ func (pl *prolog) clone() (*prolog, error) {
 	return clone, err
 }
 
+func (pl *prolog) become(clone *prolog) error {
+	delta := clone.memory.Size(clone.store) - pl.memory.Size(pl.store)
+	if delta > 0 {
+		if _, err := pl.memory.Grow(pl.store, delta); err != nil {
+			return err
+		}
+	}
+	copy(pl.memory.UnsafeData(pl.store), clone.memory.UnsafeData(clone.store))
+	return nil
+}
+
 func (pl *prolog) function(symbol string) (wasmFunc, error) {
 	export := pl.instance.GetExport(pl.store, symbol)
 	if export == nil {
