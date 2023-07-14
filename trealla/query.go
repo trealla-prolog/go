@@ -56,6 +56,13 @@ func (pl *prolog) Query(ctx context.Context, goal string, options ...QueryOption
 }
 
 func (pl *prolog) QueryOnce(ctx context.Context, goal string, options ...QueryOption) (Answer, error) {
+	pl.mu.Lock()
+	defer pl.mu.Unlock()
+	return pl.queryOnce(ctx, goal, options...)
+}
+
+func (pl *prolog) queryOnce(ctx context.Context, goal string, options ...QueryOption) (Answer, error) {
+	options = append(options, withoutLock)
 	q := pl.start(ctx, goal, options...)
 	var ans Answer
 	if q.Next(ctx) {
