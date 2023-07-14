@@ -101,7 +101,7 @@ func (pl *prolog) argv() []string {
 	return args
 }
 
-func (pl *prolog) init(clone *prolog) error {
+func (pl *prolog) init(parent *prolog) error {
 	argv := pl.argv()
 	wasi := wasmtime.NewWasiConfig()
 	wasi.SetArgv(argv)
@@ -138,8 +138,7 @@ func (pl *prolog) init(clone *prolog) error {
 	pl.instance = instance
 
 	// run once to initialize global interpreter
-
-	if clone == nil {
+	if parent == nil {
 		start := instance.GetExport(pl.store, "_start")
 		if start == nil {
 			return fmt.Errorf("trealla: failed to get start function")
@@ -200,29 +199,29 @@ func (pl *prolog) init(clone *prolog) error {
 		return err
 	}
 
-	if clone != nil {
+	if parent != nil {
 		if pl.ptr == 0 {
 			runtime.SetFinalizer(pl, (*prolog).Close)
 		}
-		pl.ptr = clone.ptr
+		pl.ptr = parent.ptr
 		pl.mu = new(sync.Mutex)
-		pl.running = maps.Clone(clone.running)
-		pl.spawning = maps.Clone(clone.spawning)
+		pl.running = make(map[int32]*query)
+		pl.spawning = make(map[int32]*query)
 		pl.procs = maps.Clone(pl.procs)
-		pl.preopen = clone.preopen
-		pl.dirs = clone.dirs
-		pl.library = clone.library
-		pl.quiet = clone.quiet
-		pl.trace = clone.trace
-		pl.debug = clone.debug
+		pl.preopen = parent.preopen
+		pl.dirs = parent.dirs
+		pl.library = parent.library
+		pl.quiet = parent.quiet
+		pl.trace = parent.trace
+		pl.debug = parent.debug
 
-		delta := clone.memory.Size(clone.store) - pl.memory.Size(pl.store)
+		delta := parent.memory.Size(parent.store) - pl.memory.Size(pl.store)
 		if delta > 0 {
 			if _, err := pl.memory.Grow(pl.store, delta); err != nil {
 				return err
 			}
 		}
-		copy(pl.memory.UnsafeData(pl.store), clone.memory.UnsafeData(clone.store))
+		copy(pl.memory.UnsafeData(pl.store), parent.memory.UnsafeData(parent.store))
 		return nil
 	}
 
