@@ -29,7 +29,7 @@ type Prolog interface {
 	// Register a native Go predicate.
 	// NOTE: this is *experimental* and its API will likely change.
 	Register(ctx context.Context, name string, arity int, predicate Predicate) error
-	//
+	// Clone creates a new clone of this interpreter.
 	Clone() (Prolog, error)
 	// Close destroys the Prolog instance.
 	// If this isn't called and the Prolog variable goes out of scope, runtime finalizers will try to free the memory.
@@ -215,13 +215,25 @@ func (pl *prolog) init(parent *prolog) error {
 		pl.trace = parent.trace
 		pl.debug = parent.debug
 
-		delta := parent.memory.Size(parent.store) - pl.memory.Size(pl.store)
-		if delta > 0 {
-			if _, err := pl.memory.Grow(pl.store, delta); err != nil {
+		if err := pl.become(parent); err != nil {
+			return err
+		}
+
+		// if any queries are running while we clone, they get copied over as zombies
+		// free them
+		for pp := range parent.spawning {
+			if ptr := pl.indirect(pp); ptr != 0 {
+				if _, err := pl.pl_done.Call(pl.store, ptr); err != nil {
+					return err
+				}
+			}
+		}
+		for ptr := range parent.running {
+			if _, err := pl.pl_done.Call(pl.store, ptr); err != nil {
 				return err
 			}
 		}
-		copy(pl.memory.UnsafeData(pl.store), parent.memory.UnsafeData(parent.store))
+
 		return nil
 	}
 
@@ -256,14 +268,14 @@ func (pl *prolog) clone() (*prolog, error) {
 	return clone, err
 }
 
-func (pl *prolog) become(clone *prolog) error {
-	delta := clone.memory.Size(clone.store) - pl.memory.Size(pl.store)
+func (pl *prolog) become(parent *prolog) error {
+	delta := parent.memory.Size(parent.store) - pl.memory.Size(pl.store)
 	if delta > 0 {
 		if _, err := pl.memory.Grow(pl.store, delta); err != nil {
 			return err
 		}
 	}
-	copy(pl.memory.UnsafeData(pl.store), clone.memory.UnsafeData(clone.store))
+	copy(pl.memory.UnsafeData(pl.store), parent.memory.UnsafeData(parent.store))
 	return nil
 }
 
