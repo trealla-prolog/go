@@ -12,7 +12,7 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/bytecodealliance/wasmtime-go/v8"
+	"github.com/bytecodealliance/wasmtime-go/v9"
 	"golang.org/x/exp/maps"
 )
 
@@ -29,7 +29,7 @@ type Prolog interface {
 	// Register a native Go predicate.
 	// NOTE: this is *experimental* and its API will likely change.
 	Register(ctx context.Context, name string, arity int, predicate Predicate) error
-	//
+	// Clone creates a new clone of this interpreter.
 	Clone() (Prolog, error)
 	// Close destroys the Prolog instance.
 	// If this isn't called and the Prolog variable goes out of scope, runtime finalizers will try to free the memory.
@@ -101,7 +101,7 @@ func (pl *prolog) argv() []string {
 	return args
 }
 
-func (pl *prolog) init(clone *prolog) error {
+func (pl *prolog) init(parent *prolog) error {
 	argv := pl.argv()
 	wasi := wasmtime.NewWasiConfig()
 	wasi.SetArgv(argv)
@@ -138,8 +138,7 @@ func (pl *prolog) init(clone *prolog) error {
 	pl.instance = instance
 
 	// run once to initialize global interpreter
-
-	if clone == nil {
+	if parent == nil {
 		start := instance.GetExport(pl.store, "_start")
 		if start == nil {
 			return fmt.Errorf("trealla: failed to get start function")
@@ -200,29 +199,41 @@ func (pl *prolog) init(clone *prolog) error {
 		return err
 	}
 
-	if clone != nil {
+	if parent != nil {
 		if pl.ptr == 0 {
 			runtime.SetFinalizer(pl, (*prolog).Close)
 		}
-		pl.ptr = clone.ptr
+		pl.ptr = parent.ptr
 		pl.mu = new(sync.Mutex)
-		pl.running = maps.Clone(clone.running)
-		pl.spawning = maps.Clone(clone.spawning)
+		pl.running = make(map[int32]*query)
+		pl.spawning = make(map[int32]*query)
 		pl.procs = maps.Clone(pl.procs)
-		pl.preopen = clone.preopen
-		pl.dirs = clone.dirs
-		pl.library = clone.library
-		pl.quiet = clone.quiet
-		pl.trace = clone.trace
-		pl.debug = clone.debug
+		pl.preopen = parent.preopen
+		pl.dirs = parent.dirs
+		pl.library = parent.library
+		pl.quiet = parent.quiet
+		pl.trace = parent.trace
+		pl.debug = parent.debug
 
-		delta := clone.memory.Size(clone.store) - pl.memory.Size(pl.store)
-		if delta > 0 {
-			if _, err := pl.memory.Grow(pl.store, delta); err != nil {
+		if err := pl.become(parent); err != nil {
+			return err
+		}
+
+		// if any queries are running while we clone, they get copied over as zombies
+		// free them
+		for pp := range parent.spawning {
+			if ptr := pl.indirect(pp); ptr != 0 {
+				if _, err := pl.pl_done.Call(pl.store, ptr); err != nil {
+					return err
+				}
+			}
+		}
+		for ptr := range parent.running {
+			if _, err := pl.pl_done.Call(pl.store, ptr); err != nil {
 				return err
 			}
 		}
-		copy(pl.memory.UnsafeData(pl.store), clone.memory.UnsafeData(clone.store))
+
 		return nil
 	}
 
@@ -255,6 +266,17 @@ func (pl *prolog) clone() (*prolog, error) {
 	clone := new(prolog)
 	err := clone.init(pl)
 	return clone, err
+}
+
+func (pl *prolog) become(parent *prolog) error {
+	delta := parent.memory.Size(parent.store) - pl.memory.Size(pl.store)
+	if delta > 0 {
+		if _, err := pl.memory.Grow(pl.store, delta); err != nil {
+			return err
+		}
+	}
+	copy(pl.memory.UnsafeData(pl.store), parent.memory.UnsafeData(parent.store))
+	return nil
 }
 
 func (pl *prolog) function(symbol string) (wasmFunc, error) {
@@ -315,7 +337,7 @@ func (pl *prolog) ConsultText(ctx context.Context, module, text string) error {
 func (pl *prolog) consultText(ctx context.Context, module, text string) error {
 	// Module:'$load_chars'(Text).
 	goal := Atom(":").Of(Atom(module), Atom("$load_chars").Of(text))
-	_, err := pl.QueryOnce(ctx, goal.String(), withoutLock)
+	_, err := pl.queryOnce(ctx, goal.String(), withoutLock)
 	if err != nil {
 		err = fmt.Errorf("trealla: consult text failed: %w", err)
 	}
@@ -438,7 +460,7 @@ func (pl *lockedProlog) QueryOnce(ctx context.Context, query string, options ...
 	if err := pl.ensure(); err != nil {
 		return Answer{}, err
 	}
-	return pl.prolog.QueryOnce(ctx, query, append(options, withoutLock)...)
+	return pl.prolog.queryOnce(ctx, query, append(options, withoutLock)...)
 }
 
 func (pl *lockedProlog) ConsultText(ctx context.Context, module, text string) error {

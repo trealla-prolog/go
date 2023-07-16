@@ -1,24 +1,21 @@
-//go:build experiment
-
 package trealla
 
 import (
 	"context"
-	"log"
+	"runtime"
 	"sync"
 	"testing"
-	"time"
 )
 
-const concurrency = 10
+const concurrency = 100
 
-func TestDB(t *testing.T) {
-	db, err := NewDB()
+func TestPool(t *testing.T) {
+	pool, err := NewPool()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = db.WriteTx(func(pl Prolog) error {
+	err = pool.WriteTx(func(pl Prolog) error {
 		return pl.ConsultText(context.Background(), "user", "test(123).")
 	})
 	if err != nil {
@@ -28,47 +25,42 @@ func TestDB(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := 0; i < 5000; i++ {
 		i := i
-		time.Sleep(100 * time.Microsecond)
-		// runtime.Gosched()
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			db.ReadTx(func(p Prolog) error {
-				ans, err := p.QueryOnce(context.Background(), "test(X)")
+			pool.ReadTx(func(p Prolog) error {
+				ans, err := p.QueryOnce(context.Background(), "test(X).")
 				if err != nil {
 					return err
 				}
-				log.Println(i, ans)
+				t.Log(i, ans)
 				return nil
 			})
 		}()
 	}
 	wg.Wait()
-
-	t.Fail()
 }
 
-func TestDBXX(t *testing.T) {
-	pl, _ := New()
-
-	pl.ConsultText(context.Background(), "user", "test(123).")
-
-	var wg sync.WaitGroup
-	for i := 0; i < 5000; i++ {
-		// time.Sleep(1 * time.Millisecond)
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			pl.QueryOnce(context.Background(), "test(X)")
-		}()
-	}
-	wg.Wait()
-
-	t.Fail()
+func BenchmarkPool4(b *testing.B) {
+	benchmarkPool(b, 4)
 }
 
-func BenchmarkDB(b *testing.B) {
-	db, err := NewDB()
+func BenchmarkPool16(b *testing.B) {
+	benchmarkPool(b, 16)
+}
+
+func BenchmarkPool256(b *testing.B) {
+	benchmarkPool(b, 256)
+}
+
+func BenchmarkPoolCPUs(b *testing.B) {
+	benchmarkPool(b, runtime.NumCPU())
+}
+
+func benchmarkPool(b *testing.B, size int) {
+	b.Helper()
+
+	db, err := NewPool(WithPoolSize(size))
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -84,18 +76,14 @@ func BenchmarkDB(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		var wg sync.WaitGroup
 		for i := 0; i < concurrency; i++ {
-			i := i
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
 				db.ReadTx(func(p Prolog) error {
-					ans, err := p.QueryOnce(context.Background(), "test(X)")
+					_, err := p.QueryOnce(context.Background(), "test(X).")
 					if err != nil {
 						return err
 					}
-					_ = ans
-					_ = i
-					// log.Println(i, ans)
 					return nil
 				})
 			}()
@@ -104,28 +92,21 @@ func BenchmarkDB(b *testing.B) {
 	}
 }
 
-func BenchmarkMutex(b *testing.B) {
+func BenchmarkContendedMutex(b *testing.B) {
 	pl, _ := New()
 	pl.ConsultText(context.Background(), "user", "test(123).")
-	// if err != nil {
-	// 	b.Fatal(err)
-	// }
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
 		var wg sync.WaitGroup
 		for i := 0; i < concurrency; i++ {
-			i := i
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				ans, err := pl.QueryOnce(context.Background(), "test(X)")
+				_, err := pl.QueryOnce(context.Background(), "test(X).")
 				if err != nil {
 					panic(err)
 				}
-				_ = ans
-				_ = i
-				// log.Println(i, ans)
 			}()
 		}
 		wg.Wait()

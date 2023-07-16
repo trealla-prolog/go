@@ -404,7 +404,7 @@ func TestBind(t *testing.T) {
 	})
 }
 
-func TestConcurrent(t *testing.T) {
+func TestConcurrencySemidet100(t *testing.T) {
 	pl, err := trealla.New()
 	if err != nil {
 		t.Fatal(err)
@@ -430,6 +430,38 @@ func TestConcurrent(t *testing.T) {
 				t.Error("bad answer. want:", want, "got:", got)
 			}
 			q.Close()
+		}()
+	}
+	wg.Wait()
+}
+
+func TestConcurrencyDet10K(t *testing.T) {
+	pl, _ := trealla.New()
+
+	pl.ConsultText(context.Background(), "user", "test(123).")
+
+	var wg sync.WaitGroup
+	for i := 0; i < 10_000; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			pl.QueryOnce(context.Background(), "test(X).")
+		}()
+	}
+	wg.Wait()
+}
+
+func TestConcurrencyDet100K(t *testing.T) {
+	pl, _ := trealla.New()
+
+	pl.ConsultText(context.Background(), "user", "test(123).")
+
+	var wg sync.WaitGroup
+	for i := 0; i < 100_000; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			pl.QueryOnce(context.Background(), "test(X).")
 		}()
 	}
 	wg.Wait()
