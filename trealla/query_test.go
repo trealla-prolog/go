@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"os"
 	"reflect"
+	"runtime"
 	"sort"
 	"sync"
 	"testing"
@@ -289,6 +290,10 @@ func TestPreopen(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("WithPreopenDir", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("skipping unixy test")
+		}
+
 		q, err := pl.QueryOnce(ctx, `directory_files("/", X)`)
 		if err != nil {
 			t.Fatal(err)
