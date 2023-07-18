@@ -12,11 +12,8 @@ import (
 type Pool struct {
 	canon    *prolog
 	children []*prolog
-	tx       uint
+	idle     chan *prolog
 	mu       *sync.RWMutex
-
-	// round robin counter
-	idle chan *prolog
 
 	// options
 	size int
@@ -60,7 +57,6 @@ func (pool *Pool) WriteTx(tx func(Prolog) error) error {
 	defer pool.mu.Unlock()
 	pl := &lockedProlog{prolog: pool.canon}
 	defer pl.kill()
-	pool.tx++
 	err := tx(pl)
 
 	// Eagerly update the replicas.
@@ -78,41 +74,37 @@ func (pool *Pool) WriteTx(tx func(Prolog) error) error {
 
 // ReadTx executes a read transaction against this Pool.
 // Queries in a read transaction must not modify the knowledgebase.
-func (db *Pool) ReadTx(tx func(Prolog) error) error {
-	db.mu.RLock()
-	defer db.mu.RUnlock()
-	child := db.child()
+func (pool *Pool) ReadTx(tx func(Prolog) error) error {
+	pool.mu.RLock()
+	defer pool.mu.RUnlock()
+	child := pool.child()
 	child.mu.Lock()
 	defer child.mu.Unlock()
-	defer db.done(child)
+	defer pool.done(child)
 	pl := &lockedProlog{prolog: child}
 	defer pl.kill()
 	err := tx(pl)
 	return err
 }
 
-func (db *Pool) child() *prolog {
-	return <-db.idle
-}
-
-func (db *Pool) done(child *prolog) {
-	db.idle <- child
-}
-
-func (db *Pool) Stats() Stats {
-	db.mu.RLock()
-	defer db.mu.RUnlock()
-	child := db.child()
-	defer db.done(child)
+func (pool *Pool) Stats() Stats {
+	pool.mu.RLock()
+	defer pool.mu.RUnlock()
+	child := pool.child()
+	defer pool.done(child)
 	return child.Stats()
 }
 
-func (db *Pool) spawn() (*prolog, error) {
-	pl, err := db.canon.clone()
-	if err != nil {
-		return nil, err
-	}
-	return pl, nil
+func (pool *Pool) spawn() (*prolog, error) {
+	return pool.canon.clone()
+}
+
+func (pool *Pool) child() *prolog {
+	return <-pool.idle
+}
+
+func (pool *Pool) done(child *prolog) {
+	pool.idle <- child
 }
 
 // PoolOption is an option for configuring a Pool.
