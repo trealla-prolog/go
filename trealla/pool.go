@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"runtime"
 	"sync"
-	"sync/atomic"
 )
 
 // Pool is a pool of Prolog interpreters that distributes read requests to replicas.
@@ -17,7 +16,7 @@ type Pool struct {
 	mu       *sync.RWMutex
 
 	// round robin counter
-	rr *uint64
+	idle chan *prolog
 
 	// options
 	size int
@@ -30,7 +29,6 @@ func NewPool(options ...PoolOption) (*Pool, error) {
 	pool := &Pool{
 		size: runtime.NumCPU(),
 		mu:   new(sync.RWMutex),
-		rr:   new(uint64),
 	}
 	for _, opt := range options {
 		if err := opt(pool); err != nil {
@@ -43,12 +41,14 @@ func NewPool(options ...PoolOption) (*Pool, error) {
 	}
 	pool.canon = pl.(*prolog)
 	pool.children = make([]*prolog, pool.size)
+	pool.idle = make(chan *prolog, pool.size)
 	for i := range pool.children {
 		var err error
 		pool.children[i], err = pool.spawn()
 		if err != nil {
 			return nil, err
 		}
+		pool.idle <- pool.children[i]
 	}
 	return pool, nil
 }
@@ -84,6 +84,7 @@ func (db *Pool) ReadTx(tx func(Prolog) error) error {
 	child := db.child()
 	child.mu.Lock()
 	defer child.mu.Unlock()
+	defer db.done(child)
 	pl := &lockedProlog{prolog: child}
 	defer pl.kill()
 	err := tx(pl)
@@ -91,16 +92,18 @@ func (db *Pool) ReadTx(tx func(Prolog) error) error {
 }
 
 func (db *Pool) child() *prolog {
-	n := atomic.AddUint64(db.rr, 1) % uint64(len(db.children))
-	child := db.children[n]
-	return child
+	return <-db.idle
+}
+
+func (db *Pool) done(child *prolog) {
+	db.idle <- child
 }
 
 func (db *Pool) Stats() Stats {
 	db.mu.RLock()
 	defer db.mu.RUnlock()
-	n := atomic.LoadUint64(db.rr) % uint64(len(db.children))
-	child := db.children[n]
+	child := db.child()
+	defer db.done(child)
 	return child.Stats()
 }
 
