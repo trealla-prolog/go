@@ -1,5 +1,3 @@
-//xxx go:build experiment
-
 package trealla
 
 import (
@@ -78,9 +76,9 @@ func (pool *Pool) ReadTx(tx func(Prolog) error) error {
 	pool.mu.RLock()
 	defer pool.mu.RUnlock()
 	child := pool.child()
+	defer pool.done(child)
 	child.mu.Lock()
 	defer child.mu.Unlock()
-	defer pool.done(child)
 	pl := &lockedProlog{prolog: child}
 	defer pl.kill()
 	err := tx(pl)
