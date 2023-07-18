@@ -1,0 +1,32 @@
+  name: Test
+
+  on:
+    create:
+      tags:
+    push:
+    pull_request:
+    release:
+      types: [created]
+
+  jobs:
+    test:
+      name: Build & Test
+      runs-on: ${{ matrix.os }}
+      strategy:
+        fail-fast: false
+        matrix:
+          os:
+            - ubuntu-latest
+            - macos-latest
+      steps:
+        - uses: actions/checkout@v3
+        - name: Install Go
+          uses: actions/setup-go@v3
+          with:
+            go-version: "1.20"
+        - name: Deps
+          run: go get ./trealla
+        - name: Build
+          run: go build ./trealla
+        - name: Test
+          run: go test -v ./trealla
