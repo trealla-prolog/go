@@ -3,16 +3,20 @@ package trealla_test
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"math/big"
 	"os"
 	"reflect"
+	"sort"
 	"sync"
 	"testing"
 
 	"github.com/trealla-prolog/go/trealla"
 )
+
+var skipSlow = flag.Bool("skipslow", false, "skip slow tests")
 
 func TestQuery(t *testing.T) {
 	testdata := "./testdata"
@@ -290,7 +294,13 @@ func TestPreopen(t *testing.T) {
 			t.Fatal(err)
 		}
 		want := []trealla.Term{".", "..", "subdirectory", "greeting.pl", "tak.pl"}
-		got := q.Solution["X"]
+		got := q.Solution["X"].([]trealla.Term)
+		sort.Slice(want, func(i, j int) bool {
+			return want[i].(string) < want[j].(string)
+		})
+		sort.Slice(got, func(i, j int) bool {
+			return got[i].(string) < got[j].(string)
+		})
 		if !reflect.DeepEqual(want, got) {
 			t.Error("bad preopen. want:", want, "got:", got)
 		}
@@ -452,6 +462,10 @@ func TestConcurrencyDet10K(t *testing.T) {
 }
 
 func TestConcurrencyDet100K(t *testing.T) {
+	if *skipSlow {
+		t.Skip("skipping slow tests")
+	}
+
 	pl, _ := trealla.New()
 
 	pl.ConsultText(context.Background(), "user", "test(123).")

@@ -24,16 +24,15 @@ func TestPool(t *testing.T) {
 
 	var wg sync.WaitGroup
 	for i := 0; i < 5000; i++ {
-		i := i
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			pool.ReadTx(func(p Prolog) error {
-				ans, err := p.QueryOnce(context.Background(), "test(X).")
+				_, err := p.QueryOnce(context.Background(), "test(X).")
 				if err != nil {
 					return err
 				}
-				t.Log(i, ans)
+				// t.Log(i, ans)
 				return nil
 			})
 		}()
