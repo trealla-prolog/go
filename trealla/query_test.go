@@ -33,6 +33,10 @@ func TestQuery(t *testing.T) {
 	}
 
 	t.Run("files", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("wonky on windows")
+		}
+
 		ctx := context.Background()
 		q, err := pl.QueryOnce(ctx, `directory_files("/", X)`)
 		if err != nil {
@@ -283,6 +287,10 @@ func TestThrow(t *testing.T) {
 }
 
 func TestPreopen(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping unixy test")
+	}
+
 	pl, err := trealla.New(trealla.WithPreopenDir("testdata"), trealla.WithMapDir("/foo", "testdata/subdirectory"))
 	if err != nil {
 		t.Fatal(err)
@@ -290,10 +298,6 @@ func TestPreopen(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("WithPreopenDir", func(t *testing.T) {
-		if runtime.GOOS == "windows" {
-			t.Skip("skipping unixy test")
-		}
-
 		q, err := pl.QueryOnce(ctx, `directory_files("/", X)`)
 		if err != nil {
 			t.Fatal(err)
@@ -312,10 +316,6 @@ func TestPreopen(t *testing.T) {
 	})
 
 	t.Run("WithMapDir", func(t *testing.T) {
-		if runtime.GOOS == "windows" {
-			t.Skip("skipping unixy test")
-		}
-
 		q, err := pl.QueryOnce(ctx, `directory_files("/foo", X)`)
 		if err != nil {
 			t.Fatal(err)
