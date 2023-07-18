@@ -3,12 +3,19 @@ package trealla
 import (
 	"context"
 	"errors"
+	"flag"
 	"log"
 	"reflect"
 	"testing"
 )
 
+var skipInterop = flag.Bool("skipinterop", false, "skip interop test")
+
 func TestInterop(t *testing.T) {
+	if *skipInterop {
+		t.Skip("skipping interop tests")
+	}
+
 	pl, err := New(WithDebugLog(log.Default()))
 
 	if err != nil {

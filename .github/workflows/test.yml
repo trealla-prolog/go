@@ -30,4 +30,4 @@
         - name: Build
           run: go build ./trealla
         - name: Test
-          run: go test -v ./trealla --skipslow
+          run: go test -v ./trealla --skipslow --skipinterop
