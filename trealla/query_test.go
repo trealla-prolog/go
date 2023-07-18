@@ -312,6 +312,10 @@ func TestPreopen(t *testing.T) {
 	})
 
 	t.Run("WithMapDir", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("skipping unixy test")
+		}
+
 		q, err := pl.QueryOnce(ctx, `directory_files("/foo", X)`)
 		if err != nil {
 			t.Fatal(err)
