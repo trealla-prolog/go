@@ -337,7 +337,7 @@ func (pl *prolog) ConsultText(ctx context.Context, module, text string) error {
 func (pl *prolog) consultText(ctx context.Context, module, text string) error {
 	// Module:'$load_chars'(Text).
 	goal := Atom(":").Of(Atom(module), Atom("$load_chars").Of(text))
-	_, err := pl.queryOnce(ctx, goal.String(), withoutLock)
+	_, err := pl.queryOnce(ctx, goal.String())
 	if err != nil {
 		err = fmt.Errorf("trealla: consult text failed: %w", err)
 	}
@@ -460,7 +460,7 @@ func (pl *lockedProlog) QueryOnce(ctx context.Context, query string, options ...
 	if err := pl.ensure(); err != nil {
 		return Answer{}, err
 	}
-	return pl.prolog.queryOnce(ctx, query, append(options, withoutLock)...)
+	return pl.prolog.queryOnce(ctx, query, options...)
 }
 
 func (pl *lockedProlog) ConsultText(ctx context.Context, module, text string) error {
