@@ -12,7 +12,7 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/bytecodealliance/wasmtime-go/v9"
+	"github.com/bytecodealliance/wasmtime-go/v11"
 	"golang.org/x/exp/maps"
 )
 
@@ -207,7 +207,7 @@ func (pl *prolog) init(parent *prolog) error {
 		pl.mu = new(sync.Mutex)
 		pl.running = make(map[int32]*query)
 		pl.spawning = make(map[int32]*query)
-		pl.procs = maps.Clone(pl.procs)
+		pl.procs = maps.Clone(parent.procs)
 		pl.preopen = parent.preopen
 		pl.dirs = parent.dirs
 		pl.library = parent.library

@@ -3,7 +3,7 @@ package trealla
 import (
 	_ "embed"
 
-	"github.com/bytecodealliance/wasmtime-go/v9"
+	"github.com/bytecodealliance/wasmtime-go/v11"
 )
 
 //go:embed libtpl.wasm
@@ -23,6 +23,10 @@ func init() {
 	cfg.SetWasmSIMD(true)
 	cfg.SetWasmMultiValue(true)
 	cfg.SetWasmMultiMemory(true)
+
+	// libtpl.wasm is built with: -zstack-size=8388608
+	// cfg.SetMaxWasmStack(8388608)
+
 	// cfg.CacheConfigLoadDefault()
 	wasmEngine = wasmtime.NewEngineWithConfig(cfg)
 
