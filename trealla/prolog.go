@@ -46,6 +46,7 @@ type prolog struct {
 	closing  bool
 	running  map[int32]*query
 	spawning map[int32]*query
+	limiter  chan struct{}
 
 	ptr             int32
 	realloc         wasmFunc
@@ -65,6 +66,7 @@ type prolog struct {
 	library string
 	trace   bool
 	quiet   bool
+	max     int
 
 	stdout *log.Logger
 	stderr *log.Logger
@@ -80,9 +82,13 @@ func New(opts ...Option) (Prolog, error) {
 		spawning: make(map[int32]*query),
 		procs:    make(map[string]Predicate),
 		mu:       new(sync.Mutex),
+		max:      8,
 	}
 	for _, opt := range opts {
 		opt(pl)
+	}
+	if pl.max > 0 {
+		pl.limiter = make(chan struct{}, pl.max)
 	}
 	return pl, pl.init(nil)
 }
@@ -214,6 +220,10 @@ func (pl *prolog) init(parent *prolog) error {
 		pl.quiet = parent.quiet
 		pl.trace = parent.trace
 		pl.debug = parent.debug
+		if parent.max > 0 {
+			pl.max = parent.max
+			pl.limiter = make(chan struct{}, pl.max)
+		}
 
 		if err := pl.become(parent); err != nil {
 			return err

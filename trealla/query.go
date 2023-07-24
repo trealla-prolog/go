@@ -35,6 +35,7 @@ type query struct {
 	next *Answer
 	err  error
 	done bool
+	dead bool
 
 	stdout_pp    int32
 	stdout_len_p int32
@@ -154,6 +155,11 @@ func (pl *prolog) start(ctx context.Context, goal string, options ...QueryOption
 	for _, opt := range options {
 		opt(q)
 	}
+
+	if pl.limiter != nil {
+		pl.limiter <- struct{}{}
+	}
+
 	if q.lock {
 		pl.mu.Lock()
 		defer pl.mu.Unlock()
@@ -316,6 +322,7 @@ func (q *query) redo(ctx context.Context) bool {
 
 		if q.done {
 			delete(pl.running, q.subquery)
+			// defer q.close()
 		}
 
 		if err := q.readOutput(); err != nil {
@@ -393,6 +400,19 @@ func (q *query) Close() error {
 	if q.lock {
 		q.pl.mu.Lock()
 		defer q.pl.mu.Unlock()
+	}
+
+	return q.close()
+}
+
+func (q *query) close() error {
+	if !q.dead {
+		q.dead = true
+		if q.pl.limiter != nil {
+			defer func() {
+				<-q.pl.limiter
+			}()
+		}
 	}
 
 	if q.subquery != 0 {

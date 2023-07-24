@@ -56,7 +56,7 @@ func TestClone(t *testing.T) {
 }
 
 func TestLeakCheck(t *testing.T) {
-	check := func(goal string) func(t *testing.T) {
+	check := func(goal string, limit int) func(t *testing.T) {
 		return func(t *testing.T) {
 			t.Parallel()
 			ctx := context.Background()
@@ -92,7 +92,12 @@ func TestLeakCheck(t *testing.T) {
 			size := 0
 			for i := 0; i < 2048; i++ {
 				q := pl.Query(ctx, goal)
+				n := 0
 				for q.Next(ctx) {
+					n++
+					if limit > 0 && n >= limit {
+						break
+					}
 				}
 				if err := q.Err(); err != nil {
 					t.Fatal(err, "iter=", i)
@@ -110,10 +115,11 @@ func TestLeakCheck(t *testing.T) {
 			t.Logf("goal: %s size: %d", goal, size)
 		}
 	}
-	t.Run("true", check("true."))
-	t.Run("between(1,3,X)", check("between(1,3,X)."))
-	t.Run("output", check("write(stdout, abc), write(stderr, def) ; write(stdout, xyz), write(stderr, qux) ; 1=2."))
+	t.Run("true", check("true.", 0))
+	t.Run("between(1,3,X)", check("between(1,3,X).", 0))
+	t.Run("between(1,3,X) limit 1", check("between(1,3,X).", 1))
+	t.Run("output", check("write(stdout, abc), write(stderr, def) ; write(stdout, xyz), write(stderr, qux) ; 1=2.", 0))
 
-	t.Run("simple interop", check("interop_simple(X)"))
+	t.Run("simple interop", check("interop_simple(X)", 0))
 	// t.Run("complex interop", check("interop_test(X)"))
 }

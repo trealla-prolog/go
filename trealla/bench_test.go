@@ -46,7 +46,7 @@ func BenchmarkClone(b *testing.B) {
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		clone, err := New()
+		clone, err := pl.Clone()
 		if err != nil {
 			b.Fatal(err)
 		}

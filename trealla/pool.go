@@ -2,7 +2,6 @@ package trealla
 
 import (
 	"fmt"
-	"log"
 	"runtime"
 	"sync"
 )
@@ -35,7 +34,6 @@ func NewPool(options ...PoolOption) (*Pool, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Println("daddy procs", pl.(*prolog).procs)
 	pool.canon = pl.(*prolog)
 	pool.children = make([]*prolog, pool.size)
 	pool.idle = make(chan *prolog, pool.size)
