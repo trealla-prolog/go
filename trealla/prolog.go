@@ -16,6 +16,8 @@ import (
 	"golang.org/x/exp/maps"
 )
 
+const defaultConcurrency = 256
+
 // Prolog is a Prolog interpreter.
 type Prolog interface {
 	// Query executes a query.
@@ -82,7 +84,7 @@ func New(opts ...Option) (Prolog, error) {
 		spawning: make(map[int32]*query),
 		procs:    make(map[string]Predicate),
 		mu:       new(sync.Mutex),
-		max:      8,
+		max:      defaultConcurrency,
 	}
 	for _, opt := range opts {
 		opt(pl)
@@ -574,6 +576,18 @@ func WithStderrLog(logger *log.Logger) Option {
 func WithDebugLog(logger *log.Logger) Option {
 	return func(pl *prolog) {
 		pl.debug = logger
+	}
+}
+
+// WithMaxConcurrency sets the maximum number of simultaneously running queries.
+// This is useful for limiting the amount of memory an interpreter will use.
+// Set to 0 to disable concurrency limits. Default is 256.
+// Note that interpreters are single-threaded, so only one query is truly executing
+// at once, but pending queries can still consume memory (which is currently limited to 4GB).
+// This knob will limit the number of queries that can actively consume the interpreter's memory.
+func WithMaxConcurrency(queries int) Option {
+	return func(pl *prolog) {
+		pl.max = queries
 	}
 }
 
