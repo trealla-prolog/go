@@ -54,9 +54,9 @@ type prolog struct {
 	realloc         wasmFunc
 	free            wasmFunc
 	pl_consult      wasmFunc
-	pl_capture_free wasmFunc
 	pl_capture      wasmFunc
 	pl_capture_read wasmFunc
+	pl_capture_free wasmFunc
 	pl_query        wasmFunc
 	pl_redo         wasmFunc
 	pl_done         wasmFunc

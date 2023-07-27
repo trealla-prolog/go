@@ -358,5 +358,14 @@ func escapeString(str string) string {
 	return `"` + stringEscaper.Replace(str) + `"`
 }
 
-var stringEscaper = strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", `\n`, "\t", `\t`)
-var atomEscaper = strings.NewReplacer(`\`, `\\`, `'`, `\'`)
+var stringEscaper = strings.NewReplacer(
+	`\`, `\\`,
+	`"`, `\"`,
+	"\n", `\n`,
+	"\t", `\t`,
+)
+
+var atomEscaper = strings.NewReplacer(
+	`\`, `\\`,
+	`'`, `\'`,
+)
