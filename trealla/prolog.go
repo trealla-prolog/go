@@ -382,18 +382,18 @@ func (pl *prolog) consult(filename string) error {
 	return nil
 }
 
-func (pl *prolog) indirect(pp int32) int32 {
-	if pp == 0 {
+func (pl *prolog) indirect(ptr int32) int32 {
+	if ptr == 0 {
 		return 0
 	}
 
 	data := pl.memory.UnsafeData(pl.store)
-	buf := bytes.NewBuffer(data[uint32(pp):uint32(pp+ptrSize)])
-	var p int32
-	if err := binary.Read(buf, binary.LittleEndian, &p); err != nil {
+	buf := bytes.NewBuffer(data[uint32(ptr):uint32(ptr+ptrSize)])
+	var v int32
+	if err := binary.Read(buf, binary.LittleEndian, &v); err != nil {
 		return 0
 	}
-	return p
+	return v
 }
 
 func (pl *prolog) Register(ctx context.Context, name string, arity int, proc Predicate) error {

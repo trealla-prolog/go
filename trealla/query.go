@@ -29,7 +29,7 @@ type query struct {
 	pl       *prolog
 	goal     string
 	bind     bindings
-	subquery int32
+	subquery int32 // pl_sub_query*
 
 	cur  Answer
 	next *Answer
@@ -37,10 +37,11 @@ type query struct {
 	done bool
 	dead bool
 
-	stdout_pp    int32
-	stdout_len_p int32
-	stderr_pp    int32
-	stderr_len_p int32
+	// output capture pointers
+	stdoutptr int32 // char**
+	stdoutlen int32 // size_t*
+	stderrptr int32 // char**
+	stderrlen int32 // size_t*
 
 	stdout *bytes.Buffer
 	stderr *bytes.Buffer
@@ -76,26 +77,26 @@ func (pl *prolog) queryOnce(ctx context.Context, goal string, options ...QueryOp
 func (q *query) allocCapture() error {
 	pl := q.pl
 	var err error
-	if q.stdout_pp == 0 {
-		q.stdout_pp, err = pl.alloc(ptrSize)
+	if q.stdoutptr == 0 {
+		q.stdoutptr, err = pl.alloc(ptrSize)
 		if err != nil {
 			return err
 		}
 	}
-	if q.stdout_len_p == 0 {
-		q.stdout_len_p, err = pl.alloc(ptrSize)
+	if q.stdoutlen == 0 {
+		q.stdoutlen, err = pl.alloc(ptrSize)
 		if err != nil {
 			return err
 		}
 	}
-	if q.stderr_pp == 0 {
-		q.stderr_pp, err = pl.alloc(ptrSize)
+	if q.stderrptr == 0 {
+		q.stderrptr, err = pl.alloc(ptrSize)
 		if err != nil {
 			return err
 		}
 	}
-	if q.stderr_len_p == 0 {
-		q.stderr_len_p, err = pl.alloc(ptrSize)
+	if q.stderrlen == 0 {
+		q.stderrlen, err = pl.alloc(ptrSize)
 		if err != nil {
 			return err
 		}
@@ -111,15 +112,15 @@ func (q *query) readOutput() error {
 		return err
 	}
 
-	_, err = pl.pl_capture_read.Call(pl.store, pl.ptr, q.stdout_pp, q.stdout_len_p, q.stderr_pp, q.stderr_len_p)
+	_, err = pl.pl_capture_read.Call(pl.store, pl.ptr, q.stdoutptr, q.stdoutlen, q.stderrptr, q.stderrlen)
 	if err != nil {
 		return err
 	}
 
-	stdoutlen := pl.indirect(q.stdout_len_p)
-	stdoutptr := pl.indirect(q.stdout_pp)
-	stderrlen := pl.indirect(q.stderr_len_p)
-	stderrptr := pl.indirect(q.stderr_pp)
+	stdoutlen := pl.indirect(q.stdoutlen)
+	stdoutptr := pl.indirect(q.stdoutptr)
+	stderrlen := pl.indirect(q.stderrlen)
+	stderrptr := pl.indirect(q.stderrptr)
 
 	stdout, err := pl.gets(stdoutptr, stdoutlen)
 	if err != nil {
@@ -425,21 +426,21 @@ func (q *query) close() error {
 		q.subquery = 0
 	}
 
-	if q.stdout_pp != 0 {
-		q.pl.free.Call(q.pl.store, q.stdout_pp, ptrSize, align)
-		q.stdout_pp = 0
+	if q.stdoutptr != 0 {
+		q.pl.free.Call(q.pl.store, q.stdoutptr, ptrSize, align)
+		q.stdoutptr = 0
 	}
-	if q.stdout_len_p != 0 {
-		q.pl.free.Call(q.pl.store, q.stdout_len_p, ptrSize, align)
-		q.stdout_len_p = 0
+	if q.stdoutlen != 0 {
+		q.pl.free.Call(q.pl.store, q.stdoutlen, ptrSize, align)
+		q.stdoutlen = 0
 	}
-	if q.stderr_pp != 0 {
-		q.pl.free.Call(q.pl.store, q.stderr_pp, ptrSize, align)
-		q.stderr_pp = 0
+	if q.stderrptr != 0 {
+		q.pl.free.Call(q.pl.store, q.stderrptr, ptrSize, align)
+		q.stderrptr = 0
 	}
-	if q.stderr_len_p != 0 {
-		q.pl.free.Call(q.pl.store, q.stderr_len_p, ptrSize, align)
-		q.stderr_len_p = 0
+	if q.stderrlen != 0 {
+		q.pl.free.Call(q.pl.store, q.stderrlen, ptrSize, align)
+		q.stderrlen = 0
 	}
 
 	// q.pl = nil
