@@ -1,9 +1,11 @@
   name: Test
 
   on:
-    create:
-      tags:
     push:
+      tags:
+        - "v*"
+      branches:
+        - "*"
     pull_request:
     release:
       types: [created]
