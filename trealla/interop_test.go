@@ -22,14 +22,23 @@ func TestInterop(t *testing.T) {
 			t.Error("bad goal. want:", want, "got:", goal)
 		}
 
-		ans1, err := pl.QueryOnce(ctx, "X is 1 + 1.")
+		// clone will have its own stack, making reentrancy less scary
+		clone, err := pl.Clone()
 		if err != nil {
 			t.Error(err)
+			return throwTerm(systemError(err.Error()))
 		}
 
-		ans2, err := pl.QueryOnce(ctx, "Y is X + 1.", WithBind("X", ans1.Solution["X"]))
+		ans1, err := clone.QueryOnce(ctx, "X is 1 + 1.")
 		if err != nil {
 			t.Error(err)
+			return throwTerm(systemError(err.Error()))
+		}
+
+		ans2, err := clone.QueryOnce(ctx, "Y is X + 1.", WithBind("X", ans1.Solution["X"]))
+		if err != nil {
+			t.Error(err)
+			return throwTerm(systemError(err.Error()))
 		}
 
 		return Atom("interop_test").Of(ans2.Solution["Y"])
@@ -80,6 +89,9 @@ func TestInterop(t *testing.T) {
 	}
 
 	for _, tc := range tests {
+		// TODO: these (used to be) flakey on Linux
+		// seems to be concurrency causing too much wasm stack to be used
+		// cloning the pl instance "fixes" it
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
 			q := pl.Query(ctx, tc.want[0].Query)
