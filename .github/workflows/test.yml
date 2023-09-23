@@ -23,6 +23,9 @@
             - windows-latest
       steps:
         - uses: actions/checkout@v3
+        # wasmtime build error workaround
+        - run: choco install mingw --version 11.2.0.07112021 --allow-downgrade
+          if: matrix.os == 'windows-latest'
         - name: Install Go
           uses: actions/setup-go@v3
           with:
