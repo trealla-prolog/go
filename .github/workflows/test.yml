@@ -24,8 +24,8 @@
       steps:
         - uses: actions/checkout@v3
         # wasmtime build error workaround
-        - run: choco install mingw --version 11.2.0.07112021 --allow-downgrade
-          if: matrix.os == 'windows-latest'
+        # - run: choco install mingw --version 11.2.0.07112021 --allow-downgrade
+        #   if: matrix.os == 'windows-latest'
         - name: Install Go
           uses: actions/setup-go@v3
           with:
@@ -33,6 +33,6 @@
         - name: Deps
           run: go get ./trealla
         - name: Build
-          run: go build ./trealla
+          run: go build -a ./trealla
         - name: Test
-          run: go test -v ./trealla --skipslow
+          run: go test -a -v ./trealla --skipslow
