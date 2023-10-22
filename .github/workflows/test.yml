@@ -27,10 +27,10 @@
         - name: Install Go
           uses: actions/setup-go@v3
           with:
-            go-version: "1.20"
+            go-version: "1.21"
         - name: Deps
           run: go get ./trealla
         - name: Build
           run: go build ./trealla
         - name: Test
-          run: go test -v ./trealla --skipslow
+          run: go test -v ./trealla --short

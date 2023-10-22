@@ -3,7 +3,6 @@ package trealla_test
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"log"
 	"math/big"
@@ -16,8 +15,6 @@ import (
 
 	"github.com/trealla-prolog/go/trealla"
 )
-
-var skipSlow = flag.Bool("skipslow", false, "skip slow tests")
 
 func TestQuery(t *testing.T) {
 	testdata := "./testdata"
@@ -482,7 +479,7 @@ func TestConcurrencyDet10K(t *testing.T) {
 }
 
 func TestConcurrencyDet100K(t *testing.T) {
-	if *skipSlow {
+	if !testing.Short() {
 		t.Skip("skipping slow tests")
 	}
 
