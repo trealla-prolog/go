@@ -419,6 +419,25 @@ func TestBind(t *testing.T) {
 			t.Error("unexpected value. want:", want, "got:", x)
 		}
 	})
+
+	t.Run("tricky json atoms", func(t *testing.T) {
+		ans, err := pl.QueryOnce(ctx, "X=true(true, aaaa, '', false(a), null, ''(q), _).")
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := trealla.Compound{Functor: "true", Args: []trealla.Term{
+			trealla.Atom("true"),
+			trealla.Atom("aaaa"),
+			trealla.Atom(""),
+			trealla.Compound{Functor: "false", Args: []trealla.Term{trealla.Atom("a")}},
+			trealla.Atom("null"),
+			trealla.Compound{Functor: "", Args: []trealla.Term{trealla.Atom("q")}},
+			trealla.Variable{Name: "_"},
+		}}
+		if x := ans.Solution["X"]; !reflect.DeepEqual(x, want) {
+			t.Error("unexpected value. want:", want, "got:", x)
+		}
+	})
 }
 
 func TestConcurrencySemidet(t *testing.T) {
