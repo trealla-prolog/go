@@ -438,6 +438,17 @@ func TestBind(t *testing.T) {
 			t.Error("unexpected value. want:", want, "got:", x)
 		}
 	})
+
+	t.Run("appended string", func(t *testing.T) {
+		ans, err := pl.QueryOnce(ctx, `Y = "ar", append("foo", [b|Y], X).`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "foobar"
+		if x := ans.Solution["X"]; !reflect.DeepEqual(x, want) {
+			t.Error("unexpected value. want:", want, "got:", x)
+		}
+	})
 }
 
 func TestConcurrencySemidet(t *testing.T) {
