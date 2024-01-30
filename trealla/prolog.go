@@ -12,7 +12,7 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/bytecodealliance/wasmtime-go/v15"
+	"github.com/bytecodealliance/wasmtime-go/v17"
 	"golang.org/x/exp/maps"
 )
 
