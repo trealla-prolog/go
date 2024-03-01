@@ -38,6 +38,7 @@ func (pl *prolog) hostCall( /*c *wasmtime.Caller,*/ subquery, msgptr, msgsize, r
 
 	msg, err := unmarshalTerm([]byte(msgraw))
 	if err != nil {
+		err = fmt.Errorf("%w (raw msg: %s)", err, msgraw)
 		return 0, wasmtime.NewTrap(err.Error())
 	}
 
