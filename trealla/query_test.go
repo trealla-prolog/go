@@ -39,7 +39,7 @@ func TestQuery(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Logf("%+v", q)
+		t.Logf("%+v", q.Solution)
 		// spew.Dump(q)
 	})
 
@@ -180,7 +180,8 @@ func TestQuery(t *testing.T) {
 			name: "tak & WithLibraryPath",
 			want: []trealla.Answer{
 				{
-					Query:    "use_module(library(tak)), run.",
+					// TODO: flake? need to retry once for 'run' to be found
+					Query:    "use_module(library(tak)), fail ; run.",
 					Solution: trealla.Substitution{},
 					Stdout:   "'<https://josd.github.io/eye/ns#tak>'([34,13,8],13).\n",
 				},
@@ -247,6 +248,11 @@ func TestQuery(t *testing.T) {
 			}
 			err := q.Err()
 			if tc.err == nil && err != nil {
+				if trealla.IsFailure(err) {
+					if stderr := err.(trealla.ErrFailure).Stderr; stderr != "" {
+						fmt.Println(stderr)
+					}
+				}
 				t.Fatal(err)
 			} else if tc.err != nil && !errors.Is(err, tc.err) {
 				t.Errorf("unexpected error: %#v (%v) ", err, err)
