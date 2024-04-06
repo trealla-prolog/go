@@ -3,7 +3,7 @@ package trealla
 import (
 	_ "embed"
 
-	"github.com/bytecodealliance/wasmtime-go/v17"
+	"github.com/bytecodealliance/wasmtime-go/v19"
 )
 
 //go:embed libtpl.wasm

@@ -9,11 +9,11 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"maps"
 	"runtime"
 	"sync"
 
-	"github.com/bytecodealliance/wasmtime-go/v17"
-	"golang.org/x/exp/maps"
+	"github.com/bytecodealliance/wasmtime-go/v19"
 )
 
 const defaultConcurrency = 256
