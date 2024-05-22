@@ -13,7 +13,7 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/bytecodealliance/wasmtime-go/v20"
+	"github.com/bytecodealliance/wasmtime-go/v21"
 )
 
 const defaultConcurrency = 256
