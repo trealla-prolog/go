@@ -94,9 +94,9 @@ func (pl *prolog) hostCall( /*c *wasmtime.Caller,*/ subquery, msgptr, msgsize, r
 	if err := subq.readOutput(); err != nil {
 		return 0, wasmtime.NewTrap(err.Error())
 	}
-	if _, err := pl.pl_capture.Call(pl.store, pl.ptr); err != nil {
-		return 0, wasmtime.NewTrap(err.Error())
-	}
+	// if _, err := pl.pl_capture.Call(pl.store, pl.ptr); err != nil {
+	// 	return 0, wasmtime.NewTrap(err.Error())
+	// }
 
 	return wasmTrue, nil
 }

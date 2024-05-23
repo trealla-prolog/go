@@ -50,16 +50,17 @@ type prolog struct {
 	spawning map[int32]*query
 	limiter  chan struct{}
 
-	ptr             int32
-	realloc         wasmFunc
-	free            wasmFunc
-	pl_consult      wasmFunc
-	pl_capture      wasmFunc
-	pl_capture_read wasmFunc
-	pl_capture_free wasmFunc
-	pl_query        wasmFunc
-	pl_redo         wasmFunc
-	pl_done         wasmFunc
+	ptr              int32
+	realloc          wasmFunc
+	free             wasmFunc
+	pl_consult       wasmFunc
+	pl_capture       wasmFunc
+	pl_capture_read  wasmFunc
+	pl_capture_reset wasmFunc
+	pl_capture_free  wasmFunc
+	pl_query         wasmFunc
+	pl_redo          wasmFunc
+	pl_done          wasmFunc
 
 	procs map[string]Predicate
 
@@ -182,6 +183,11 @@ func (pl *prolog) init(parent *prolog) error {
 		return err
 	}
 
+	pl.pl_capture_reset, err = pl.function("pl_capture_reset")
+	if err != nil {
+		return err
+	}
+
 	pl.pl_capture_free, err = pl.function("pl_capture_free")
 	if err != nil {
 		return err
@@ -260,6 +266,11 @@ func (pl *prolog) init(parent *prolog) error {
 		return fmt.Errorf("trealla: failed to get interpreter: %w", err)
 	}
 	pl.ptr = ptr.(int32)
+
+	_, err = pl.pl_capture.Call(pl.store, pl.ptr)
+	if err != nil {
+		return err
+	}
 
 	if err := pl.loadBuiltins(); err != nil {
 		return fmt.Errorf("trealla: failed to load builtins: %w", err)

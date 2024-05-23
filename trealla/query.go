@@ -116,6 +116,7 @@ func (q *query) readOutput() error {
 	if err != nil {
 		return err
 	}
+	defer pl.pl_capture_reset.Call(pl.store, pl.ptr)
 
 	stdoutlen := pl.indirect(q.stdoutlen)
 	stdoutptr := pl.indirect(q.stdoutptr)
@@ -134,7 +135,7 @@ func (q *query) readOutput() error {
 	}
 	q.stderr.WriteString(stderr)
 
-	pl.pl_capture_free.Call(pl.store, pl.ptr)
+	// pl.pl_capture_free.Call(pl.store, pl.ptr)
 
 	return nil
 }
@@ -208,11 +209,6 @@ func (pl *prolog) start(ctx context.Context, goal string, options ...QueryOption
 				ch <- fmt.Errorf("trealla: panic: %v", ex)
 			}
 		}()
-		_, err := pl.pl_capture.Call(pl.store, pl.ptr)
-		if err != nil {
-			ch <- err
-			return
-		}
 
 		v, err := pl.pl_query.Call(pl.store, pl.ptr, goalstr.ptr, subqptr, 0)
 		if err == nil {
@@ -293,12 +289,6 @@ func (q *query) redo(ctx context.Context) bool {
 				ch <- fmt.Errorf("trealla: panic: %v", ex)
 			}
 		}()
-
-		_, err := pl.pl_capture.Call(pl.store, pl.ptr)
-		if err != nil {
-			ch <- err
-			return
-		}
 
 		v, err := pl.pl_redo.Call(pl.store, q.subquery)
 		if err == nil {
