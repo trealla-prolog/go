@@ -3,9 +3,8 @@
 package trealla
 
 import (
-	"bytes"
 	"context"
-	"encoding/binary"
+	"crypto/rand"
 	"fmt"
 	"io"
 	"log"
@@ -13,7 +12,8 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/bytecodealliance/wasmtime-go/v21"
+	"github.com/tetratelabs/wazero"
+	"github.com/tetratelabs/wazero/api"
 )
 
 const defaultConcurrency = 256
@@ -41,16 +41,15 @@ type Prolog interface {
 }
 
 type prolog struct {
-	instance *wasmtime.Instance
-	store    *wasmtime.Store
-	wasi     *wasmtime.WasiConfig
-	memory   *wasmtime.Memory
+	ctx      context.Context
+	instance api.Module
+	memory   api.Memory
 	closing  bool
-	running  map[int32]*query
-	spawning map[int32]*query
+	running  map[uint32]*query
+	spawning map[uint32]*query
 	limiter  chan struct{}
 
-	ptr             int32
+	ptr             uint32
 	realloc         wasmFunc
 	free            wasmFunc
 	pl_consult      wasmFunc
@@ -77,11 +76,13 @@ type prolog struct {
 	mu *sync.Mutex
 }
 
+type prologKey struct{}
+
 // New creates a new Prolog interpreter.
 func New(opts ...Option) (Prolog, error) {
 	pl := &prolog{
-		running:  make(map[int32]*query),
-		spawning: make(map[int32]*query),
+		running:  make(map[uint32]*query),
+		spawning: make(map[uint32]*query),
 		procs:    make(map[string]Predicate),
 		mu:       new(sync.Mutex),
 		max:      defaultConcurrency,
@@ -111,52 +112,32 @@ func (pl *prolog) argv() []string {
 
 func (pl *prolog) init(parent *prolog) error {
 	argv := pl.argv()
-	wasi := wasmtime.NewWasiConfig()
-	wasi.SetArgv(argv)
+	fs := wazero.NewFSConfig()
 	if pl.preopen != "" {
-		if err := wasi.PreopenDir(pl.preopen, "/"); err != nil {
-			panic(err)
-		}
+		fs = fs.WithDirMount(pl.preopen, "/")
 	}
 	for alias, dir := range pl.dirs {
-		if err := wasi.PreopenDir(dir, alias); err != nil {
-			panic(err)
-		}
+		fs = fs.WithDirMount(dir, alias)
 	}
 
-	pl.wasi = wasi
+	cfg := wazero.NewModuleConfig().WithName("").WithArgs(argv...).WithFSConfig(fs).
+		WithSysWalltime().WithSysNanotime().WithSysNanosleep().
+		WithOsyield(runtime.Gosched).
+		WithRandSource(rand.Reader)
 
-	pl.store = wasmtime.NewStore(wasmEngine)
-	pl.store.SetWasi(wasi)
+	// run once to initialize global interpreter
+	if parent != nil {
+		cfg = cfg.WithStartFunctions()
+	}
 
-	linker := wasmtime.NewLinker(wasmEngine)
-	if err := linker.DefineWasi(); err != nil {
-		return err
-	}
-	if err := linker.DefineFunc(pl.store, "trealla", "host-call", pl.hostCall); err != nil {
-		return err
-	}
-	if err := linker.DefineFunc(pl.store, "trealla", "host-resume", hostResume); err != nil {
-		return err
-	}
-	instance, err := linker.Instantiate(pl.store, wasmModule)
+	pl.ctx = context.WithValue(context.Background(), prologKey{}, pl)
+	instance, err := wasmEngine.InstantiateModule(pl.ctx, wasmModule, cfg)
 	if err != nil {
 		return err
 	}
 	pl.instance = instance
 
-	// run once to initialize global interpreter
-	if parent == nil {
-		start := instance.GetExport(pl.store, "_start")
-		if start == nil {
-			return fmt.Errorf("trealla: failed to get start function")
-		}
-		if _, err := start.Func().Call(pl.store); err != nil {
-			return fmt.Errorf("trealla: failed to initialize: %w", err)
-		}
-	}
-
-	mem := instance.GetExport(pl.store, "memory").Memory()
+	mem := instance.Memory()
 	if mem == nil {
 		return fmt.Errorf("trealla: failed to get memory")
 	}
@@ -213,8 +194,8 @@ func (pl *prolog) init(parent *prolog) error {
 		}
 		pl.ptr = parent.ptr
 		pl.mu = new(sync.Mutex)
-		pl.running = make(map[int32]*query)
-		pl.spawning = make(map[int32]*query)
+		pl.running = make(map[uint32]*query)
+		pl.spawning = make(map[uint32]*query)
 		pl.procs = maps.Clone(parent.procs)
 		pl.preopen = parent.preopen
 		pl.dirs = parent.dirs
@@ -235,13 +216,13 @@ func (pl *prolog) init(parent *prolog) error {
 		// free them
 		for pp := range parent.spawning {
 			if ptr := pl.indirect(pp); ptr != 0 {
-				if _, err := pl.pl_done.Call(pl.store, ptr); err != nil {
+				if _, err := pl.pl_done.Call(pl.ctx, uint64(ptr)); err != nil {
 					return err
 				}
 			}
 		}
 		for ptr := range parent.running {
-			if _, err := pl.pl_done.Call(pl.store, ptr); err != nil {
+			if _, err := pl.pl_done.Call(pl.ctx, uint64(ptr)); err != nil {
 				return err
 			}
 		}
@@ -255,11 +236,11 @@ func (pl *prolog) init(parent *prolog) error {
 	if err != nil {
 		return err
 	}
-	ptr, err := pl_global.Call(pl.store)
+	ptr, err := pl_global.Call(pl.ctx)
 	if err != nil {
 		return fmt.Errorf("trealla: failed to get interpreter: %w", err)
 	}
-	pl.ptr = ptr.(int32)
+	pl.ptr = uint32(ptr[0])
 
 	if err := pl.loadBuiltins(); err != nil {
 		return fmt.Errorf("trealla: failed to load builtins: %w", err)
@@ -281,40 +262,40 @@ func (pl *prolog) clone() (*prolog, error) {
 }
 
 func (pl *prolog) become(parent *prolog) error {
-	delta := parent.memory.Size(parent.store) - pl.memory.Size(pl.store)
-	if delta > 0 {
-		if _, err := pl.memory.Grow(pl.store, delta); err != nil {
-			return err
+	mySize, _ := pl.memory.Grow(0)
+	parentSize, _ := parent.memory.Grow(0)
+	if parentSize > mySize {
+		if _, ok := pl.memory.Grow(parentSize - mySize); !ok {
+			panic("trealla: failed to become")
 		}
 	}
-	copy(pl.memory.UnsafeData(pl.store), parent.memory.UnsafeData(parent.store))
+	myBuffer, _ := pl.memory.Read(0, pl.memory.Size())
+	parentBuffer, _ := parent.memory.Read(0, parent.memory.Size())
+	copy(myBuffer, parentBuffer)
 	return nil
 }
 
 func (pl *prolog) function(symbol string) (wasmFunc, error) {
-	export := pl.instance.GetExport(pl.store, symbol)
+	export := pl.instance.ExportedFunction(symbol)
 	if export == nil {
 		return nil, errUnexported(symbol)
 	}
-	return export.Func(), nil
+	return export, nil
 }
 
-func (pl *prolog) alloc(size int32) (int32, error) {
-	ptrv, err := pl.realloc.Call(pl.store, 0, 0, align, size)
+func (pl *prolog) alloc(size uint32) (uint32, error) {
+	ptrv, err := pl.realloc.Call(pl.ctx, 0, 0, align, uint64(size))
 	if err != nil {
 		return 0, err
 	}
-	ptr, ok := ptrv.(int32)
-	if !ok {
-		return 0, fmt.Errorf("unexpected return type for alloc: %T (%v)", ptrv, ptrv)
-	}
+	ptr := uint32(ptrv[0])
 	if ptr == 0 {
 		return 0, fmt.Errorf("trealla: failed to allocate wasm memory (out of memory?)")
 	}
 	return ptr, nil
 }
 
-func (pl *prolog) subquery(addr int32) *query {
+func (pl *prolog) subquery(addr uint32) *query {
 	if q, ok := pl.running[addr]; ok {
 		return q
 	}
@@ -333,8 +314,6 @@ func (pl *prolog) Close() {
 	defer pl.mu.Unlock()
 	pl.instance = nil
 	pl.memory = nil
-	pl.store = nil
-	pl.wasi = nil
 }
 
 func (pl *prolog) ConsultText(ctx context.Context, module, text string) error {
@@ -372,27 +351,22 @@ func (pl *prolog) consult(filename string) error {
 	}
 	defer fstr.free(pl)
 
-	ret, err := pl.pl_consult.Call(pl.store, pl.ptr, fstr.ptr)
+	ret, err := pl.pl_consult.Call(pl.ctx, uint64(pl.ptr), uint64(fstr.ptr))
 	if err != nil {
 		return err
 	}
-	if ret.(int32) == 0 {
+	if uint32(ret[0]) == 0 {
 		return fmt.Errorf("trealla: failed to consult file: %s", filename)
 	}
 	return nil
 }
 
-func (pl *prolog) indirect(ptr int32) int32 {
+func (pl *prolog) indirect(ptr uint32) uint32 {
 	if ptr == 0 {
 		return 0
 	}
 
-	data := pl.memory.UnsafeData(pl.store)
-	buf := bytes.NewBuffer(data[uint32(ptr):uint32(ptr+ptrSize)])
-	var v int32
-	if err := binary.Read(buf, binary.LittleEndian, &v); err != nil {
-		return 0
-	}
+	v, _ := pl.memory.ReadUint32Le(ptr)
 	return v
 }
 
@@ -427,11 +401,12 @@ func (pl *prolog) Stats() Stats {
 }
 
 func (pl *prolog) stats() Stats {
-	if pl.memory == nil || pl.store == nil {
+	if pl.memory == nil {
 		return Stats{}
 	}
+	size, _ := pl.memory.Grow(0)
 	return Stats{
-		MemorySize: int(pl.memory.DataSize(pl.store)),
+		MemorySize: int(size) * pageSize,
 	}
 }
 
