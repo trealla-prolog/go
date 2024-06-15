@@ -62,7 +62,7 @@ func TestInterop(t *testing.T) {
 			name: "http_consult/1",
 			want: []Answer{
 				{
-					Query:    `http_consult("https://raw.githubusercontent.com/guregu/worker-prolog/978c956801ffff83f190450e5c0325a9d34b064a/src/views/examples/fizzbuzz.pl"), !, fizzbuzz(1, 21), !`,
+					Query:    `http_consult(fizzbuzz:"https://raw.githubusercontent.com/guregu/worker-prolog/978c956801ffff83f190450e5c0325a9d34b064a/src/views/examples/fizzbuzz.pl"), fizzbuzz:fizzbuzz(1, 21), !`,
 					Solution: Substitution{},
 					Stdout:   "1\n2\nfizz\n4\nbuzz\nfizz\n7\n8\nfizz\nbuzz\n11\nfizz\n13\n14\nfizzbuzz\n16\n17\nfizz\n19\nbuzz\nfizz\n",
 				},

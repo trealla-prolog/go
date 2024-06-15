@@ -121,6 +121,7 @@ These additional predicates are built in:
 
 - `crypto_data_hash/3`
 - `http_consult/1`
+  - Argument can be URL string, or `my_module_name:"https://url.example"`
 
 ## WASM binary
 

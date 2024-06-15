@@ -181,7 +181,7 @@ func TestQuery(t *testing.T) {
 			want: []trealla.Answer{
 				{
 					// TODO: flake? need to retry once for 'run' to be found
-					Query:    "use_module(library(tak)), fail ; run.",
+					Query:    "use_module(library(tak)), run.",
 					Solution: trealla.Substitution{},
 					Stdout:   "'<https://josd.github.io/eye/ns#tak>'([34,13,8],13).\n",
 				},

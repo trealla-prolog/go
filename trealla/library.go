@@ -103,11 +103,27 @@ func http_consult_1(_ Prolog, _ Subquery, goal Term) Term {
 	if len(cmp.Args) != 1 {
 		return systemError(piTerm("http_consult", 1))
 	}
-	str, ok := cmp.Args[0].(string)
-	if !ok {
-		return typeError("chars", cmp.Args[0], piTerm("http_consult", 1))
+	module := Atom("user")
+	var addr string
+	switch x := cmp.Args[0].(type) {
+	case string:
+		addr = x
+	case Compound:
+		// http_consult(module_name:"http://...")
+		if x.Functor != ":" || len(x.Args) != 2 {
+			return typeError("chars", cmp.Args[0], piTerm("http_consult", 1))
+		}
+		var ok bool
+		module, ok = x.Args[0].(Atom)
+		if !ok {
+			return typeError("atom", x.Args[0], piTerm("http_consult", 1))
+		}
+		addr, ok = x.Args[1].(string)
+		if !ok {
+			return typeError("chars", x.Args[1], piTerm("http_consult", 1))
+		}
 	}
-	href, err := url.Parse(str)
+	href, err := url.Parse(addr)
 	if err != nil {
 		return domainError("url", cmp.Args[0], piTerm("http_consult", 1))
 	}
@@ -131,9 +147,9 @@ func http_consult_1(_ Prolog, _ Subquery, goal Term) Term {
 	case http.StatusNoContent:
 		return goal
 	case http.StatusNotFound, http.StatusGone:
-		return existenceError("source_sink", str, piTerm("http_consult", 1))
+		return existenceError("source_sink", addr, piTerm("http_consult", 1))
 	case http.StatusForbidden, http.StatusUnauthorized:
-		return permissionError("open,source_sink", str, piTerm("http_consult", 1))
+		return permissionError("open,source_sink", addr, piTerm("http_consult", 1))
 	default:
 		return systemError(fmt.Errorf("http_consult/1: unexpected status code: %d", resp.StatusCode))
 	}
@@ -144,7 +160,7 @@ func http_consult_1(_ Prolog, _ Subquery, goal Term) Term {
 	}
 
 	// call(URL:'$load_chars'(Text)).
-	return Atom("call").Of(Atom(":").Of(Atom(href.String()), Atom("$load_chars").Of(buf.String())))
+	return Atom("call").Of(Atom(":").Of(module, Atom("$load_chars").Of(buf.String())))
 }
 
 func crypto_data_hash_3(pl Prolog, _ Subquery, goal Term) Term {
