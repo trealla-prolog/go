@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/bytecodealliance/wasmtime-go/v21"
+	"github.com/bytecodealliance/wasmtime-go/v22"
 )
 
 // Predicate is a Prolog predicate implemented in Go.
