@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"maps"
 	"runtime"
@@ -63,8 +64,8 @@ type prolog struct {
 
 	procs map[string]Predicate
 
-	preopen string
 	dirs    map[string]string
+	fs      map[string]fs.FS
 	library string
 	trace   bool
 	quiet   bool
@@ -114,11 +115,11 @@ func (pl *prolog) argv() []string {
 func (pl *prolog) init(parent *prolog) error {
 	argv := pl.argv()
 	fs := wazero.NewFSConfig()
-	if pl.preopen != "" {
-		fs = fs.WithDirMount(pl.preopen, "/")
-	}
 	for alias, dir := range pl.dirs {
 		fs = fs.WithDirMount(dir, alias)
+	}
+	for alias, fsys := range pl.fs {
+		fs = fs.WithFSMount(fsys, alias)
 	}
 
 	cfg := wazero.NewModuleConfig().WithName("").WithArgs(argv...).WithFSConfig(fs).
@@ -203,8 +204,8 @@ func (pl *prolog) init(parent *prolog) error {
 		pl.running = make(map[uint32]*query)
 		pl.spawning = make(map[uint32]*query)
 		pl.procs = maps.Clone(parent.procs)
-		pl.preopen = parent.preopen
 		pl.dirs = parent.dirs
+		pl.fs = parent.fs
 		pl.library = parent.library
 		pl.quiet = parent.quiet
 		pl.trace = parent.trace
@@ -499,12 +500,10 @@ func (pl *lockedProlog) Stats() Stats {
 // Option is an optional parameter for New.
 type Option func(*prolog)
 
-// WithPreopenDir sets the preopen directory to dir, granting access to it. Calling this again will overwrite it.
-// More or less equivalent to `WithMapDir(dir, dir)`.
+// WithPreopenDir sets the root directory (also called the preopen directory) to dir, granting access to it. Calling this again will overwrite it.
+// Equivalent to `WithMapDir("/", dir)`.
 func WithPreopenDir(dir string) Option {
-	return func(pl *prolog) {
-		pl.preopen = dir
-	}
+	return WithMapDir("/", dir)
 }
 
 // WithMapDir sets alias to point to directory dir, granting access to it.
@@ -515,6 +514,17 @@ func WithMapDir(alias, dir string) Option {
 			pl.dirs = make(map[string]string)
 		}
 		pl.dirs[alias] = dir
+	}
+}
+
+// WithMapFS sets alias to point to [fs.FS] dir, granting access to it.
+// This can be called multiple times with different aliases.
+func WithMapFS(alias string, fsys fs.FS) Option {
+	return func(pl *prolog) {
+		if pl.fs == nil {
+			pl.fs = make(map[string]fs.FS)
+		}
+		pl.fs[alias] = fsys
 	}
 }
 

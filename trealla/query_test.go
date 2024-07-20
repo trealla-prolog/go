@@ -12,9 +12,17 @@ import (
 	"sort"
 	"sync"
 	"testing"
+	"testing/fstest"
 
 	"github.com/trealla-prolog/go/trealla"
 )
+
+var testfs = fstest.MapFS{
+	"fs.pl": &fstest.MapFile{
+		Data: []byte(`go_fs(works).`),
+		Mode: 0600,
+	},
+}
 
 func TestQuery(t *testing.T) {
 	testdata := "./testdata"
@@ -24,7 +32,9 @@ func TestQuery(t *testing.T) {
 
 	pl, err := trealla.New(
 		trealla.WithPreopenDir("."),
-		trealla.WithLibraryPath("testdata"), trealla.WithDebugLog(log.Default()))
+		trealla.WithMapFS("/custom_fs", testfs),
+		trealla.WithLibraryPath("testdata"),
+		trealla.WithDebugLog(log.Default()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,6 +230,15 @@ func TestQuery(t *testing.T) {
 				{
 					Query:    `tell('/testdata/test.txt'), write(hello), flush_output, X = 1, read_file_to_string("/testdata/test.txt", Content, []), delete_file("/testdata/test.txt")`,
 					Solution: trealla.Substitution{"X": int64(1), "Content": "hello"},
+				},
+			},
+		},
+		{
+			name: "fs.FS support",
+			want: []trealla.Answer{
+				{
+					Query:    `consult('/custom_fs/fs.pl'), go_fs(X), directory_files("/custom_fs", Files).`,
+					Solution: trealla.Substitution{"X": trealla.Atom("works"), "Files": []trealla.Term{".", "..", "fs.pl"}},
 				},
 			},
 		},
