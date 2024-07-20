@@ -29,7 +29,7 @@ type query struct {
 	pl       *prolog
 	goal     string
 	bind     bindings
-	subquery int32 // pl_sub_query*
+	subquery uint32 // pl_sub_query*
 
 	cur  Answer
 	next *Answer
@@ -38,10 +38,10 @@ type query struct {
 	dead bool
 
 	// output capture pointers
-	stdoutptr int32 // char**
-	stdoutlen int32 // size_t*
-	stderrptr int32 // char**
-	stderrlen int32 // size_t*
+	stdoutptr uint32 // char**
+	stdoutlen uint32 // size_t*
+	stderrptr uint32 // char**
+	stderrlen uint32 // size_t*
 
 	stdout *bytes.Buffer
 	stderr *bytes.Buffer
@@ -112,11 +112,13 @@ func (q *query) readOutput() error {
 		return err
 	}
 
-	_, err = pl.pl_capture_read.Call(pl.store, pl.ptr, q.stdoutptr, q.stdoutlen, q.stderrptr, q.stderrlen)
+	_, err = pl.pl_capture_read.Call(pl.ctx, uint64(pl.ptr),
+		uint64(q.stdoutptr), uint64(q.stdoutlen),
+		uint64(q.stderrptr), uint64(q.stderrlen))
 	if err != nil {
 		return err
 	}
-	defer pl.pl_capture_reset.Call(pl.store, pl.ptr)
+	defer pl.pl_capture_reset.Call(pl.ctx, uint64(pl.ptr))
 
 	stdoutlen := pl.indirect(q.stdoutlen)
 	stdoutptr := pl.indirect(q.stdoutptr)
@@ -191,10 +193,10 @@ func (pl *prolog) start(ctx context.Context, goal string, options ...QueryOption
 		return q
 	}
 	pl.spawning[subqptr] = q
-	defer func(ptr int32) {
+	defer func(ptr uint32) {
 		delete(pl.spawning, subqptr)
 	}(subqptr)
-	defer pl.free.Call(pl.store, subqptr, 4, 1)
+	defer pl.free.Call(pl.ctx, uint64(subqptr), 4, 1)
 
 	if err := q.allocCapture(); err != nil {
 		q.setError(err)
@@ -202,7 +204,7 @@ func (pl *prolog) start(ctx context.Context, goal string, options ...QueryOption
 	}
 
 	ch := make(chan error, 2)
-	var ret int32
+	var ret uint32
 	go func() {
 		defer func() {
 			if ex := recover(); ex != nil {
@@ -210,9 +212,9 @@ func (pl *prolog) start(ctx context.Context, goal string, options ...QueryOption
 			}
 		}()
 
-		v, err := pl.pl_query.Call(pl.store, pl.ptr, goalstr.ptr, subqptr, 0)
+		v, err := pl.pl_query.Call(pl.ctx, uint64(pl.ptr), uint64(goalstr.ptr), uint64(subqptr), 0)
 		if err == nil {
-			ret = v.(int32)
+			ret = uint32(v[0])
 		}
 		goalstr.free(pl)
 		ch <- err
@@ -282,7 +284,7 @@ func (q *query) redo(ctx context.Context) bool {
 	pl := q.pl
 
 	ch := make(chan error, 2)
-	var ret int32
+	var ret uint32
 	go func() {
 		defer func() {
 			if ex := recover(); ex != nil {
@@ -290,9 +292,9 @@ func (q *query) redo(ctx context.Context) bool {
 			}
 		}()
 
-		v, err := pl.pl_redo.Call(pl.store, q.subquery)
+		v, err := pl.pl_redo.Call(pl.ctx, uint64(q.subquery))
 		if err == nil {
-			ret = v.(int32)
+			ret = uint32(v[0])
 		}
 		ch <- err
 	}()
@@ -411,25 +413,25 @@ func (q *query) close() error {
 	}
 
 	if !q.done && q.subquery != 0 {
-		q.pl.pl_done.Call(q.pl.store, q.subquery)
+		q.pl.pl_done.Call(q.pl.ctx, uint64(q.subquery))
 		q.done = true
 		q.subquery = 0
 	}
 
 	if q.stdoutptr != 0 {
-		q.pl.free.Call(q.pl.store, q.stdoutptr, ptrSize, align)
+		q.pl.free.Call(q.pl.ctx, uint64(q.stdoutptr), ptrSize, align)
 		q.stdoutptr = 0
 	}
 	if q.stdoutlen != 0 {
-		q.pl.free.Call(q.pl.store, q.stdoutlen, ptrSize, align)
+		q.pl.free.Call(q.pl.ctx, uint64(q.stdoutlen), ptrSize, align)
 		q.stdoutlen = 0
 	}
 	if q.stderrptr != 0 {
-		q.pl.free.Call(q.pl.store, q.stderrptr, ptrSize, align)
+		q.pl.free.Call(q.pl.ctx, uint64(q.stderrptr), ptrSize, align)
 		q.stderrptr = 0
 	}
 	if q.stderrlen != 0 {
-		q.pl.free.Call(q.pl.store, q.stderrlen, ptrSize, align)
+		q.pl.free.Call(q.pl.ctx, uint64(q.stderrlen), ptrSize, align)
 		q.stderrlen = 0
 	}
 

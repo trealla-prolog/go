@@ -1,50 +1,48 @@
 package trealla
 
 import (
+	"context"
 	_ "embed"
 
-	"github.com/bytecodealliance/wasmtime-go/v22"
+	"github.com/tetratelabs/wazero"
+	"github.com/tetratelabs/wazero/api"
+	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
 )
 
 //go:embed libtpl.wasm
 var tplWASM []byte
 
-type wasmFunc = *wasmtime.Func
+type wasmFunc = api.Function
 
-var wasmEngine *wasmtime.Engine
-var wasmModule *wasmtime.Module
+var wasmEngine wazero.Runtime
+var wasmModule wazero.CompiledModule
 
 func init() {
-	cfg := wasmtime.NewConfig()
-	cfg.SetStrategy(wasmtime.StrategyCranelift)
-	cfg.SetCraneliftOptLevel(wasmtime.OptLevelSpeed)
-	cfg.SetWasmBulkMemory(true)
-	cfg.SetWasmMemory64(false)
-	cfg.SetWasmSIMD(true)
-	cfg.SetWasmMultiValue(true)
-	cfg.SetWasmMultiMemory(true)
+	ctx := context.Background()
+	wasmEngine = wazero.NewRuntime(ctx)
+	wasi_snapshot_preview1.MustInstantiate(ctx, wasmEngine)
 
-	// libtpl.wasm is built with: -zstack-size=8388608
-	cfg.SetMaxWasmStack(8388608)
+	_, err := wasmEngine.NewHostModuleBuilder("trealla").
+		NewFunctionBuilder().WithFunc(hostCall).Export("host-call").
+		NewFunctionBuilder().WithFunc(hostResume).Export("host-resume").
+		Instantiate(ctx)
+	if err != nil {
+		panic(err)
+	}
 
-	// cfg.CacheConfigLoadDefault()
-	wasmEngine = wasmtime.NewEngineWithConfig(cfg)
-
-	var err error
-	wasmModule, err = wasmtime.NewModule(wasmEngine, tplWASM)
+	wasmModule, err = wasmEngine.CompileModule(ctx, tplWASM)
 	if err != nil {
 		panic(err)
 	}
 }
 
 var (
-	wasmFalse int32 = 0
-	wasmTrue  int32 = 1
+	wasmFalse uint32 = 0
+	wasmTrue  uint32 = 1
 )
 
-// type wint = int32
-
 const (
-	ptrSize = 4
-	align   = 1
+	ptrSize  = 4
+	align    = 1
+	pageSize = 64 * 1024
 )

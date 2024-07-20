@@ -1,10 +1,8 @@
 package trealla
 
 import (
-	"encoding/binary"
+	"context"
 	"fmt"
-
-	"github.com/bytecodealliance/wasmtime-go/v22"
 )
 
 // Predicate is a Prolog predicate implemented in Go.
@@ -21,35 +19,35 @@ type Predicate func(pl Prolog, subquery Subquery, goal Term) Term
 
 // Subquery is an opaque value representing an in-flight query.
 // It is unique as long as the query is alive, but may be re-used later on.
-type Subquery int32
+type Subquery uint32
 
-func (pl *prolog) hostCall( /*c *wasmtime.Caller,*/ subquery, msgptr, msgsize, reply_pp, replysize_p int32) (int32, *wasmtime.Trap) {
+func hostCall(ctx context.Context, subquery, msgptr, msgsize, reply_pp, replysize_p uint32) uint32 {
 	// extern int32_t host_call(int32_t subquery, const char *msg, size_t msg_size, char **reply, size_t *reply_size);
+	pl := ctx.Value(prologKey{}).(*prolog)
 
 	subq := pl.subquery(subquery)
 	if subq == nil {
-		return 0, wasmtime.NewTrap(fmt.Sprintf("could not find subquery: %d", subquery))
+		panic(fmt.Sprintf("could not find subquery: %d", subquery))
 	}
 
 	msgraw, err := pl.gets(msgptr, msgsize)
 	if err != nil {
-		return 0, wasmtime.NewTrap(err.Error())
+		panic(err)
 	}
 
 	msg, err := unmarshalTerm([]byte(msgraw))
 	if err != nil {
 		err = fmt.Errorf("%w (raw msg: %s)", err, msgraw)
-		return 0, wasmtime.NewTrap(err.Error())
+		panic(err)
 	}
 
-	memory := pl.memory.UnsafeData(pl.store)
 	reply := func(str string) error {
 		msg, err := newCString(pl, str)
 		if err != nil {
 			return err
 		}
-		binary.LittleEndian.PutUint32(memory[uint32(reply_pp):], uint32(msg.ptr))
-		binary.LittleEndian.PutUint32(memory[uint32(replysize_p):], uint32(msg.size-1))
+		pl.memory.WriteUint32Le(reply_pp, msg.ptr)
+		pl.memory.WriteUint32Le(replysize_p, uint32(msg.size-1))
 		return nil
 	}
 
@@ -57,9 +55,9 @@ func (pl *prolog) hostCall( /*c *wasmtime.Caller,*/ subquery, msgptr, msgsize, r
 	if !ok {
 		expr := typeError("atomic", msg, piTerm("$host_call", 2))
 		if err := reply(expr.String()); err != nil {
-			return 0, wasmtime.NewTrap(err.Error())
+			panic(err)
 		}
-		return wasmTrue, nil
+		return wasmTrue
 	}
 
 	proc, ok := pl.procs[goal.Indicator()]
@@ -70,13 +68,13 @@ func (pl *prolog) hostCall( /*c *wasmtime.Caller,*/ subquery, msgptr, msgsize, r
 				piTerm("$host_call", 2),
 			))
 		if err := reply(expr.String()); err != nil {
-			return 0, wasmtime.NewTrap(err.Error())
+			panic(err)
 		}
-		return wasmTrue, nil
+		return wasmTrue
 	}
 
 	if err := subq.readOutput(); err != nil {
-		return 0, wasmtime.NewTrap(err.Error())
+		panic(err)
 	}
 	// log.Println("SAVING", subq.stderr.String())
 
@@ -85,23 +83,26 @@ func (pl *prolog) hostCall( /*c *wasmtime.Caller,*/ subquery, msgptr, msgsize, r
 	locked.kill()
 	expr, err := marshal(continuation)
 	if err != nil {
-		return 0, wasmtime.NewTrap(err.Error())
+		panic(err)
 	}
 	if err := reply(expr); err != nil {
-		return 0, wasmtime.NewTrap(err.Error())
+		panic(err)
 	}
 
 	if err := subq.readOutput(); err != nil {
-		return 0, wasmtime.NewTrap(err.Error())
+		panic(err)
 	}
 	// if _, err := pl.pl_capture.Call(pl.store, pl.ptr); err != nil {
 	// 	return 0, wasmtime.NewTrap(err.Error())
 	// }
+	// if _, err := pl.pl_capture.Call(pl.ctx, uint64(pl.ptr)); err != nil {
+	// 	panic(err)
+	// }
 
-	return wasmTrue, nil
+	return wasmTrue
 }
 
-func hostResume(_, _, _ int32) (int32, *wasmtime.Trap) {
+func hostResume(_, _, _ uint32) uint32 {
 	// extern int32_t host_resume(int32_t subquery, char **reply, size_t *reply_size);
-	return wasmFalse, nil
+	return wasmFalse
 }
