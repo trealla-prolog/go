@@ -1,1 +1,4 @@
-wapm_packages
+trealla.test
+*.out
+*.bin
+.DS_Store
