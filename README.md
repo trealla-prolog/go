@@ -36,7 +36,7 @@ func main() {
 
 	// calling Close is not necessary if you iterate through the whole result set
 	// but it doesn't hurt either
-	defer query.Close() 
+	defer query.Close()
 
 	// iterate through answers
 	for query.Next(ctx) {
@@ -142,8 +142,9 @@ go test -v ./trealla -bench=.
 ```
 
 ## Thanks
- 
+
 - Andrew Davison ([@infradig](https://github.com/infradig)) and other contributors to [Trealla Prolog](https://github.com/trealla-prolog/trealla).
+- Nuno Cruces ([@ncruces](https://github.com/ncruces)) for the wazero port.
 - Jos De Roo ([@josd](https://github.com/josd)) for test cases and encouragement.
 - Aram Panasenco ([@panasenco](https://github.com/panasenco)) for his JSON library.
 
