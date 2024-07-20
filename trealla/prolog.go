@@ -589,5 +589,5 @@ func WithMaxConcurrency(queries int) Option {
 
 var (
 	_ Prolog = (*prolog)(nil)
-	_ Prolog = &lockedProlog{}
+	_ Prolog = (*lockedProlog)(nil)
 )
