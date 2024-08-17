@@ -130,7 +130,7 @@ func Example_register_nondet() {
 			// Check Min and Max argument's type, must be integers (all integers are int64).
 			min, ok := goal.Args[0].(int64)
 			if !ok {
-				// throw(error(type_error(list, X), base32/2)).
+				// throw(error(type_error(integer, Min), betwixt/3)).
 				yield(trealla.Atom("throw").Of(trealla.Atom("error").Of(
 					trealla.Atom("type_error").Of("integer", goal.Args[0]),
 					pi,
@@ -141,9 +141,9 @@ func Example_register_nondet() {
 			}
 			max, ok := goal.Args[1].(int64)
 			if !ok {
-				// throw(error(type_error(list, X), base32/2)).
+				// throw(error(type_error(integer, Max), betwixt/3)).
 				yield(trealla.Atom("throw").Of(trealla.Atom("error").Of(
-					trealla.Atom("type_error").Of("integer", goal.Args[0]),
+					trealla.Atom("type_error").Of("integer", goal.Args[1]),
 					pi,
 				)))
 				return
