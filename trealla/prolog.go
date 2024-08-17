@@ -32,6 +32,9 @@ type Prolog interface {
 	// Register a native Go predicate.
 	// NOTE: this is *experimental* and its API will likely change.
 	Register(ctx context.Context, name string, arity int, predicate Predicate) error
+	// Register a native Go nondeterminate predicate.
+	// By returning a sequence of terms, a [NondetPredicate] can create multiple choice points.
+	RegisterNondet(ctx context.Context, name string, arity int, predicate NondetPredicate) error
 	// Clone creates a new clone of this interpreter.
 	Clone() (Prolog, error)
 	// Close destroys the Prolog instance.
@@ -57,12 +60,13 @@ type prolog struct {
 	pl_capture       wasmFunc
 	pl_capture_read  wasmFunc
 	pl_capture_reset wasmFunc
-	pl_capture_free  wasmFunc
 	pl_query         wasmFunc
 	pl_redo          wasmFunc
 	pl_done          wasmFunc
 
 	procs map[string]Predicate
+	coros map[int64]coroutine
+	coron int64
 
 	dirs    map[string]string
 	fs      map[string]fs.FS
@@ -86,6 +90,7 @@ func New(opts ...Option) (Prolog, error) {
 		running:  make(map[uint32]*query),
 		spawning: make(map[uint32]*query),
 		procs:    make(map[string]Predicate),
+		coros:    make(map[int64]coroutine),
 		mu:       new(sync.Mutex),
 		max:      defaultConcurrency,
 	}
@@ -170,11 +175,6 @@ func (pl *prolog) init(parent *prolog) error {
 		return err
 	}
 
-	pl.pl_capture_free, err = pl.function("pl_capture_free")
-	if err != nil {
-		return err
-	}
-
 	pl.pl_query, err = pl.function("pl_query")
 	if err != nil {
 		return err
@@ -203,7 +203,12 @@ func (pl *prolog) init(parent *prolog) error {
 		pl.mu = new(sync.Mutex)
 		pl.running = make(map[uint32]*query)
 		pl.spawning = make(map[uint32]*query)
+
 		pl.procs = maps.Clone(parent.procs)
+		// pl.procs[piTerm("$coro_next", 2).String()] = pl.sys_coro_next_2
+		// pl.procs[piTerm("$coro_stop", 1).String()] = pl.sys_coro_stop_1
+		pl.coros = make(map[int64]coroutine) // TODO: copy over? probably not
+
 		pl.dirs = parent.dirs
 		pl.fs = parent.fs
 		pl.library = parent.library
@@ -308,12 +313,20 @@ func (pl *prolog) alloc(size uint32) (uint32, error) {
 }
 
 func (pl *prolog) subquery(addr uint32) *query {
+	if addr == 0 {
+		return nil
+	}
 	if q, ok := pl.running[addr]; ok {
 		return q
 	}
 	for spawn, q := range pl.spawning {
 		if ptr := pl.indirect(spawn); ptr != 0 {
 			if ptr == addr {
+				// if q.pl.debug != nil {
+				// 	pl.debug.Println("indirecting", spawn, ptr)
+				// }
+				// pl.running[ptr] = q
+				// q.subquery = ptr
 				return q
 			}
 		}
@@ -380,26 +393,6 @@ func (pl *prolog) indirect(ptr uint32) uint32 {
 
 	v, _ := pl.memory.ReadUint32Le(ptr)
 	return v
-}
-
-func (pl *prolog) Register(ctx context.Context, name string, arity int, proc Predicate) error {
-	pl.mu.Lock()
-	defer pl.mu.Unlock()
-	if pl.instance == nil {
-		return io.EOF
-	}
-	return pl.register(ctx, name, arity, proc)
-}
-
-func (pl *prolog) register(ctx context.Context, name string, arity int, proc Predicate) error {
-	functor := Atom(name)
-	pi := piTerm(functor, arity)
-	pl.procs[pi.String()] = proc
-	vars := numbervars(arity)
-	head := functor.Of(vars...)
-	body := Atom("host_rpc").Of(head)
-	clause := fmt.Sprintf(`%s :- %s.`, head.String(), body.String())
-	return pl.consultText(ctx, "user", clause)
 }
 
 type Stats struct {
@@ -481,6 +474,13 @@ func (pl *lockedProlog) Register(ctx context.Context, name string, arity int, pr
 		return err
 	}
 	return pl.prolog.register(ctx, name, arity, proc)
+}
+
+func (pl *lockedProlog) RegisterNondet(ctx context.Context, name string, arity int, proc NondetPredicate) error {
+	if err := pl.ensure(); err != nil {
+		return err
+	}
+	return pl.prolog.registerNondet(ctx, name, arity, proc)
 }
 
 func (pl *lockedProlog) Close() {

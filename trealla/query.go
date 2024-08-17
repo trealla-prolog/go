@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"iter"
 	"runtime"
 	"strings"
 	"sync"
@@ -16,12 +17,18 @@ const etx = '\x03' // END OF TEXT
 // Query is a Prolog query iterator.
 type Query interface {
 	// Next computes the next solution. Returns true if it found one and false if there are no more results.
+	// Be sure to check for errors by calling Err afterwards.
 	Next(context.Context) bool
+	// All returns an iterator over query results.
+	// Be sure to check for errors by calling Err afterwards.
+	// This is a single-use iterator.
+	All(context.Context) iter.Seq[Answer]
 	// Current returns the current solution prepared by Next.
 	Current() Answer
 	// Close destroys this query. It is not necessary to call this if you exhaust results via Next.
 	Close() error
 	// Err returns this query's error. Always check this after iterating.
+	// Query failures are represented as [ErrFailure] and queries that throw an exception as [ErrThrow].
 	Err() error
 }
 
@@ -30,6 +37,9 @@ type query struct {
 	goal     string
 	bind     bindings
 	subquery uint32 // pl_sub_query*
+
+	// in-flight coroutines
+	coros map[int64]struct{}
 
 	cur  Answer
 	next *Answer
@@ -136,8 +146,6 @@ func (q *query) readOutput() error {
 		return err
 	}
 	q.stderr.WriteString(stderr)
-
-	// pl.pl_capture_free.Call(pl.store, pl.ptr)
 
 	return nil
 }
@@ -380,6 +388,22 @@ func (q *query) pop() bool {
 	return true
 }
 
+// All returns an iterator over query results.
+// Be sure to check for errors by calling Err afterwards.
+// This is a single-use iterator.
+func (q *query) All(ctx context.Context) iter.Seq[Answer] {
+	return func(yield func(Answer) bool) {
+		for q.Next(ctx) {
+			if !yield(q.Current()) {
+				break
+			}
+		}
+		if err := q.Close(); err != nil {
+			q.setError(err)
+		}
+	}
+}
+
 func (q *query) Current() Answer {
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -405,6 +429,12 @@ func (q *query) close() error {
 			defer func() {
 				<-q.pl.limiter
 			}()
+		}
+		for coro := range q.coros {
+			if q.pl.debug != nil {
+				q.pl.debug.Println("killing coroutine:", coro, "subquery:", q.subquery, "(query closed)")
+			}
+			q.pl.CoroStop(Subquery(q.subquery), coro)
 		}
 	}
 

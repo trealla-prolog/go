@@ -4,6 +4,7 @@ package terms
 
 import (
 	"math/big"
+	"slices"
 
 	"github.com/trealla-prolog/go/trealla"
 )
@@ -96,4 +97,28 @@ func IsList(x trealla.Term) bool {
 		return x == "[]"
 	}
 	return false
+}
+
+// Substitute returns a copy of the term x with its arguments replaced by args.
+// A nil argument will be kept as-is.
+// If len(args) > 0, x must be [trealla.Compound].
+func Substitute(x trealla.Term, args ...trealla.Term) trealla.Term {
+	if len(args) == 0 {
+		return x
+	}
+	cmp, ok := x.(trealla.Compound)
+	if !ok {
+		pi := PI(x)
+		if pi == nil {
+			pi = trealla.Atom("/").Of(trealla.Atom("go$terms.Substitute"), int64(len(args)))
+		}
+		return Throw(TypeError("compound", x, pi))
+	}
+	goal := trealla.Compound{Functor: cmp.Functor, Args: slices.Clone(cmp.Args)}
+	for i, arg := range args {
+		if arg != nil {
+			goal.Args[i] = arg
+		}
+	}
+	return goal
 }
