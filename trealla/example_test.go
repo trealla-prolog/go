@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base32"
 	"fmt"
+	"iter"
 
 	"github.com/trealla-prolog/go/trealla"
 )
@@ -88,7 +89,7 @@ func Example_register() {
 			// throw(error(type_error(list, X), base32/2)).
 			// See: terms subpackage for convenience functions to create these errors.
 			return trealla.Atom("throw").Of(trealla.Atom("error").Of(
-				trealla.Atom("type_error").Of("list", goal.Args[0]),
+				trealla.Atom("type_error").Of("chars", goal.Args[0]),
 				trealla.Atom("/").Of(trealla.Atom("base32"), 2),
 			))
 		}
@@ -108,4 +109,80 @@ func Example_register() {
 	}
 	fmt.Println(answer.Solution["Encoded"])
 	// Output: NBSWY3DP
+}
+
+func Example_register_nondet() {
+	ctx := context.Background()
+	pl, err := trealla.New()
+	if err != nil {
+		panic(err)
+	}
+
+	// Let's add a native equivalent of between/3.
+	// betwixt(+Min, +Max, ?N).
+	pl.RegisterNondet(ctx, "betwixt", 3, func(_ trealla.Prolog, _ trealla.Subquery, goal0 trealla.Term) iter.Seq[trealla.Term] {
+		pi := trealla.Atom("/").Of(trealla.Atom("betwixt"), 2)
+		return func(yield func(trealla.Term) bool) {
+			// goal is the goal called by Prolog, such as: base32("hello", X).
+			// Guaranteed to match up with the registered arity and name.
+			goal := goal0.(trealla.Compound)
+
+			// Check Min and Max argument's type, must be integers (all integers are int64).
+			min, ok := goal.Args[0].(int64)
+			if !ok {
+				// throw(error(type_error(integer, Min), betwixt/3)).
+				yield(trealla.Atom("throw").Of(trealla.Atom("error").Of(
+					trealla.Atom("type_error").Of("integer", goal.Args[0]),
+					pi,
+				)))
+				// See terms subpackage for an easier way:
+				// yield(terms.Throw(terms.TypeError("integer", goal.Args[0], terms.PI(goal)))
+				return
+			}
+			max, ok := goal.Args[1].(int64)
+			if !ok {
+				// throw(error(type_error(integer, Max), betwixt/3)).
+				yield(trealla.Atom("throw").Of(trealla.Atom("error").Of(
+					trealla.Atom("type_error").Of("integer", goal.Args[1]),
+					pi,
+				)))
+				return
+			}
+
+			if min > max {
+				// Since we haven't yielded anything, this will fail.
+				return
+			}
+
+			switch x := goal.Args[2].(type) {
+			case int64:
+				// If the 3rd argument is bound, we can do a simple check and stop iterating.
+				if x >= min && x <= max {
+					yield(goal)
+					return
+				}
+			case trealla.Variable:
+				// Create choice points unifying N from min to max
+				for n := min; n <= max; n++ {
+					goal.Args[2] = n
+					if !yield(goal) {
+						break
+					}
+				}
+			default:
+				yield(trealla.Atom("throw").Of(trealla.Atom("error").Of(
+					trealla.Atom("type_error").Of("integer", goal.Args[2]),
+					trealla.Atom("/").Of(trealla.Atom("base32"), 2),
+				)))
+			}
+		}
+	})
+
+	// Try it out.
+	answer, err := pl.QueryOnce(ctx, `findall(N, betwixt(1, 5, N), Ns), write(Ns).`)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(answer.Stdout)
+	// Output: [1,2,3,4,5]
 }

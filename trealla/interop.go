@@ -3,6 +3,8 @@ package trealla
 import (
 	"context"
 	"fmt"
+	"io"
+	"iter"
 )
 
 // Predicate is a Prolog predicate implemented in Go.
@@ -17,9 +19,157 @@ import (
 //   - Return a 'true' atom to succeed without unifying anything.
 type Predicate func(pl Prolog, subquery Subquery, goal Term) Term
 
+// NondetPredicate works similarly to [Predicate], but can create multiple choice points.
+type NondetPredicate func(pl Prolog, subquery Subquery, goal Term) iter.Seq[Term]
+
 // Subquery is an opaque value representing an in-flight query.
 // It is unique as long as the query is alive, but may be re-used later on.
 type Subquery uint32
+
+type coroutine struct {
+	next func() (Term, bool)
+	stop func()
+}
+
+type coroer interface {
+	CoroStart(subq Subquery, seq iter.Seq[Term]) int64
+	CoroNext(subq Subquery, id int64) (Term, bool)
+	CoroStop(subq Subquery, id int64)
+}
+
+func (pl *prolog) Register(ctx context.Context, name string, arity int, proc Predicate) error {
+	pl.mu.Lock()
+	defer pl.mu.Unlock()
+	if pl.instance == nil {
+		return io.EOF
+	}
+	return pl.register(ctx, name, arity, proc)
+}
+
+func (pl *prolog) register(ctx context.Context, name string, arity int, proc Predicate) error {
+	functor := Atom(name)
+	pi := piTerm(functor, arity)
+	pl.procs[pi.String()] = proc
+	vars := numbervars(arity)
+	head := functor.Of(vars...)
+	body := Atom("host_rpc").Of(head)
+	clause := fmt.Sprintf(`%s :- %s.`, head.String(), body.String())
+	return pl.consultText(ctx, "user", clause)
+}
+
+func (pl *prolog) RegisterNondet(ctx context.Context, name string, arity int, proc NondetPredicate) error {
+	pl.mu.Lock()
+	defer pl.mu.Unlock()
+	if pl.instance == nil {
+		return io.EOF
+	}
+	return pl.registerNondet(ctx, name, arity, proc)
+}
+
+func (pl *prolog) registerNondet(ctx context.Context, name string, arity int, proc NondetPredicate) error {
+	shim := func(pl2 Prolog, subquery Subquery, goal Term) Term {
+		plc := pl2.(coroer)
+		seq := proc(pl2, subquery, goal)
+		id := plc.CoroStart(subquery, seq)
+		// call: call_cleanup('$coro_next'(ID), '$coro_stop'(ID))
+		return Atom("call").Of(
+			Atom("call_cleanup").Of(
+				Atom("$coro_next").Of(id, goal),
+				Atom("$coro_stop").Of(id),
+			),
+		)
+	}
+	return pl.register(ctx, name, arity, shim)
+}
+
+// '$coro_next'(+ID, ?Goal)
+func sys_coro_next_2(pl Prolog, subquery Subquery, goal Term) Term {
+	plc := pl.(coroer)
+	g := goal.(Compound)
+	id, ok := g.Args[0].(int64)
+	if !ok {
+		return throwTerm(domainError("integer", g.Args[0], g.pi()))
+	}
+	result, ok := plc.CoroNext(subquery, id)
+	if !ok || result == nil {
+		return Atom("fail")
+	}
+	// call(( wasm_generic:host_rpc_eval(Goal, Result, [], []) ; '$coro_next'(ID, Goal) ))
+	return Atom("call").Of(
+		Atom(";").Of(
+			Atom(":").Of(Atom("wasm_generic"), Atom("host_rpc_eval").Of(result, g.Args[1], Atom("[]"), Atom("[]"))),
+			Atom("$coro_next").Of(id, g.Args[1]),
+		),
+	)
+}
+
+// '$coro_stop'(+ID)
+func sys_coro_stop_1(pl Prolog, subquery Subquery, goal Term) Term {
+	plc := pl.(coroer)
+	g := goal.(Compound)
+	id, ok := g.Args[0].(int64)
+	if !ok {
+		return throwTerm(domainError("integer", g.Args[0], g.pi()))
+	}
+	plc.CoroStop(subquery, id)
+	return goal
+}
+
+func (pl *prolog) CoroStart(subq Subquery, seq iter.Seq[Term]) int64 {
+	pl.coron++
+	id := pl.coron
+	next, stop := iter.Pull(seq)
+	pl.coros[id] = coroutine{
+		next: next,
+		stop: stop,
+	}
+	if query := pl.subquery(uint32(subq)); query != nil {
+		if query.coros == nil {
+			query.coros = make(map[int64]struct{})
+		}
+		query.coros[id] = struct{}{}
+	}
+	return id
+}
+
+func (pl *prolog) CoroNext(subq Subquery, id int64) (Term, bool) {
+	coro, ok := pl.coros[id]
+	if !ok {
+		return Atom("false"), false
+	}
+	next, ok := coro.next()
+	if !ok {
+		delete(pl.coros, id)
+		if query := pl.subquery(uint32(subq)); query != nil {
+			delete(query.coros, id)
+		}
+	}
+	return next, ok
+}
+
+func (pl *prolog) CoroStop(subq Subquery, id int64) {
+	if query := pl.subquery(uint32(subq)); query != nil {
+		delete(query.coros, id)
+	}
+	coro, ok := pl.coros[id]
+	if !ok {
+		return
+	}
+	coro.stop()
+	delete(pl.coros, id)
+}
+
+func (pl *lockedProlog) CoroStart(subq Subquery, seq iter.Seq[Term]) int64 {
+	return pl.prolog.CoroStart(subq, seq)
+}
+
+func (pl *lockedProlog) CoroNext(subq Subquery, id int64) (Term, bool) {
+	return pl.prolog.CoroNext(subq, id)
+}
+
+func (pl *lockedProlog) CoroStop(subq Subquery, id int64) {
+	pl.prolog.CoroStop(subq, id)
+}
 
 func hostCall(ctx context.Context, subquery, msgptr, msgsize, reply_pp, replysize_p uint32) uint32 {
 	// extern int32_t host_call(int32_t subquery, const char *msg, size_t msg_size, char **reply, size_t *reply_size);
@@ -79,7 +229,7 @@ func hostCall(ctx context.Context, subquery, msgptr, msgsize, reply_pp, replysiz
 	// log.Println("SAVING", subq.stderr.String())
 
 	locked := &lockedProlog{prolog: pl}
-	continuation := proc(locked, Subquery(subquery), goal)
+	continuation := catch(proc, locked, Subquery(subquery), goal)
 	locked.kill()
 	expr, err := marshal(continuation)
 	if err != nil {
@@ -92,17 +242,41 @@ func hostCall(ctx context.Context, subquery, msgptr, msgsize, reply_pp, replysiz
 	if err := subq.readOutput(); err != nil {
 		panic(err)
 	}
-	// if _, err := pl.pl_capture.Call(pl.store, pl.ptr); err != nil {
-	// 	return 0, wasmtime.NewTrap(err.Error())
-	// }
-	// if _, err := pl.pl_capture.Call(pl.ctx, uint64(pl.ptr)); err != nil {
-	// 	panic(err)
-	// }
-
 	return wasmTrue
+}
+
+func catch(pred Predicate, pl Prolog, subq Subquery, goal Term) (result Term) {
+	defer func() {
+		if threw := recover(); threw != nil {
+			switch ball := threw.(type) {
+			case Atom:
+				result = throwTerm(ball)
+			case Compound:
+				if ball.Functor == "throw" && len(ball.Args) == 1 {
+					result = ball
+				} else {
+					result = throwTerm(ball)
+				}
+			default:
+				result = throwTerm(
+					Atom("system_error").Of(
+						Atom("panic").Of(fmt.Sprint(threw)),
+						goal.(atomicTerm).pi(),
+					),
+				)
+			}
+		}
+	}()
+	result = pred(pl, subq, goal)
+	return
 }
 
 func hostResume(_, _, _ uint32) uint32 {
 	// extern int32_t host_resume(int32_t subquery, char **reply, size_t *reply_size);
 	return wasmFalse
 }
+
+var (
+	_ coroer = (*prolog)(nil)
+	_ coroer = (*lockedProlog)(nil)
+)

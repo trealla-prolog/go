@@ -19,14 +19,17 @@ var builtins = []struct {
 	arity int
 	proc  Predicate
 }{
+	{"$coro_next", 2, sys_coro_next_2},
+	{"$coro_stop", 1, sys_coro_stop_1},
 	{"crypto_data_hash", 3, crypto_data_hash_3},
 	{"http_consult", 1, http_consult_1},
 	{"http_fetch", 3, http_fetch_3},
 }
 
 func (pl *prolog) loadBuiltins() error {
+	ctx := context.Background()
 	for _, predicate := range builtins {
-		if err := pl.register(context.Background(), predicate.name, predicate.arity, predicate.proc); err != nil {
+		if err := pl.register(ctx, predicate.name, predicate.arity, predicate.proc); err != nil {
 			return err
 		}
 	}
