@@ -90,14 +90,14 @@ func sys_coro_next_2(pl Prolog, subquery Subquery, goal Term) Term {
 	if !ok {
 		return throwTerm(domainError("integer", g.Args[0], g.pi()))
 	}
-	t, ok := plc.CoroNext(subquery, id)
-	if !ok || t == nil {
+	result, ok := plc.CoroNext(subquery, id)
+	if !ok || result == nil {
 		return Atom("fail")
 	}
-	// call(( Goal = Result ; '$coro_next'(ID, Goal) ))
+	// call(( wasm_generic:host_rpc_eval(Goal, Result, [], []) ; '$coro_next'(ID, Goal) ))
 	return Atom("call").Of(
 		Atom(";").Of(
-			Atom("=").Of(g.Args[1], t),
+			Atom(":").Of(Atom("wasm_generic"), Atom("host_rpc_eval").Of(result, g.Args[1], Atom("[]"), Atom("[]"))),
 			Atom("$coro_next").Of(id, g.Args[1]),
 		),
 	)

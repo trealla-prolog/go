@@ -207,7 +207,9 @@ func BenchmarkInteropNondet(b *testing.B) {
 			b.Fatal("query failed", query.Err())
 		}
 	}
-	query.Close()
+	if err := query.Close(); err != nil {
+		b.Error("close error:", err)
+	}
 	if leftovers := len(pl.(*prolog).coros); leftovers > 0 {
 		b.Error("coroutines weren't cleaned up:", leftovers)
 	}

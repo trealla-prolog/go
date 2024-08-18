@@ -20,7 +20,7 @@ func Example_nondet_predicate() {
 	// betwixt(+Min, +Max, ?N).
 	pl.RegisterNondet(ctx, "betwixt", 3, func(_ trealla.Prolog, _ trealla.Subquery, goal0 trealla.Term) iter.Seq[trealla.Term] {
 		return func(yield func(trealla.Term) bool) {
-			// goal is the goal called by Prolog, such as: base32("hello", X).
+			// goal is the goal called by Prolog, such as: betwixt(1, 10, X).
 			// Guaranteed to match up with the registered arity and name.
 			goal := goal0.(trealla.Compound)
 
