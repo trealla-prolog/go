@@ -351,8 +351,8 @@ func (pl *prolog) ConsultText(ctx context.Context, module, text string) error {
 }
 
 func (pl *prolog) consultText(ctx context.Context, module, text string) error {
-	// Module:'$load_chars'(Text).
-	goal := Atom(":").Of(Atom(module), Atom("$load_chars").Of(text))
+	// load_text(Text, [module(Module)]).
+	goal := Atom("load_text").Of(text, []Term{Atom("module").Of(Atom(module))})
 	_, err := pl.queryOnce(ctx, goal.String())
 	if err != nil {
 		err = fmt.Errorf("trealla: consult text failed: %w", err)

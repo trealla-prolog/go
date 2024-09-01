@@ -162,8 +162,8 @@ func http_consult_1(_ Prolog, _ Subquery, goal Term) Term {
 		return resourceError(Atom(err.Error()), piTerm("http_consult", 1))
 	}
 
-	// call(URL:'$load_chars'(Text)).
-	return Atom("call").Of(Atom(":").Of(module, Atom("$load_chars").Of(buf.String())))
+	// call(load_text(Text, module(URL))).
+	return Atom("call").Of(Atom("load_text").Of(buf.String(), []Term{Atom("module").Of(module)}))
 }
 
 func crypto_data_hash_3(pl Prolog, _ Subquery, goal Term) Term {
