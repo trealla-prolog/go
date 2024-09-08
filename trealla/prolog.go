@@ -205,8 +205,6 @@ func (pl *prolog) init(parent *prolog) error {
 		pl.spawning = make(map[uint32]*query)
 
 		pl.procs = maps.Clone(parent.procs)
-		// pl.procs[piTerm("$coro_next", 2).String()] = pl.sys_coro_next_2
-		// pl.procs[piTerm("$coro_stop", 1).String()] = pl.sys_coro_stop_1
 		pl.coros = make(map[int64]coroutine) // TODO: copy over? probably not
 
 		pl.dirs = parent.dirs
@@ -337,6 +335,9 @@ func (pl *prolog) subquery(addr uint32) *query {
 func (pl *prolog) Close() {
 	pl.mu.Lock()
 	defer pl.mu.Unlock()
+	if pl.instance != nil {
+		pl.instance.Close(context.Background())
+	}
 	pl.instance = nil
 	pl.memory = nil
 }
