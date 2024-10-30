@@ -146,6 +146,12 @@ func scan(sub Substitution, rv reflect.Value) error {
 			if fv.Kind() == reflect.Slice {
 				length := vv.Len()
 				etype := ftype.Elem()
+				if vv.Type().Kind() == reflect.String {
+					runes := []rune(vv.String())
+					vv = reflect.ValueOf(runes)
+					length = len(runes)
+					etype = reflect.TypeFor[Atom]()
+				}
 				slice := reflect.MakeSlice(ftype, length, length)
 				for i := 0; i < length; i++ {
 					x := vv.Index(i)

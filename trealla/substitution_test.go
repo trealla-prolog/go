@@ -48,6 +48,15 @@ func TestScan(t *testing.T) {
 			sub:  Substitution{"X": "x", "Y": "y"},
 			want: map[string]any{"X": "x", "Y": "y"},
 		},
+		// strings → slices
+		{
+			sub:  Substitution{"X": "xyz"},
+			want: struct{ X []Atom }{X: []Atom{"x", "y", "z"}},
+		},
+		{
+			sub:  Substitution{"X": "xyzあ"},
+			want: struct{ X []Term }{X: []Term{Atom("x"), Atom("y"), Atom("z"), Atom("あ")}},
+		},
 	}
 
 	for _, tc := range cases {
