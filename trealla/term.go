@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"reflect"
 	"strconv"
 	"strings"
 	"unicode"
@@ -318,8 +319,14 @@ func marshal(term Term) (string, error) {
 		return strconv.FormatInt(x, 10), nil
 	case int:
 		return strconv.FormatInt(int64(x), 10), nil
+	case uint64:
+		return strconv.FormatUint(x, 10), nil
+	case uint:
+		return strconv.FormatUint(uint64(x), 10), nil
 	case float64:
 		return strconv.FormatFloat(x, 'f', -1, 64), nil
+	case float32:
+		return strconv.FormatFloat(float64(x), 'f', -1, 32), nil
 	case *big.Int:
 		return x.String(), nil
 	case Atom:
@@ -354,6 +361,47 @@ func marshal(term Term) (string, error) {
 		return marshalSlice(x)
 	case []Variable:
 		return marshalSlice(x)
+	default:
+		rv := reflect.ValueOf(term)
+		if !rv.IsValid() {
+			break
+		}
+		for rv.Kind() == reflect.Pointer && !rv.IsNil() {
+			rv = rv.Elem()
+		}
+		if !rv.CanInterface() {
+			break
+		}
+
+		switch rv.Kind() {
+		case reflect.Slice, reflect.Array:
+			var sb strings.Builder
+			sb.WriteByte('[')
+			length := rv.Len()
+			for i := 0; i < length; i++ {
+				if i != 0 {
+					sb.WriteByte(',')
+				}
+				elem, err := marshal(rv.Index(i).Interface())
+				if err != nil {
+					return "", err
+				}
+				sb.WriteString(elem)
+			}
+			sb.WriteByte(']')
+			return sb.String(), nil
+
+		case reflect.Int, reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8:
+			return strconv.FormatInt(rv.Int(), 10), nil
+		case reflect.Uint, reflect.Uint64, reflect.Uint32, reflect.Uint16, reflect.Uint8:
+			return strconv.FormatUint(rv.Uint(), 10), nil
+		case reflect.Float64:
+			return strconv.FormatFloat(rv.Float(), 'f', -1, 64), nil
+		case reflect.Float32:
+			return strconv.FormatFloat(rv.Float(), 'f', -1, 32), nil
+		case reflect.String:
+			return escapeString(rv.String()), nil
+		}
 	}
 	return "", fmt.Errorf("trealla: can't marshal type %T, value: %v", term, term)
 }
