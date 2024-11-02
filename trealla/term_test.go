@@ -81,6 +81,10 @@ func TestMarshal(t *testing.T) {
 			term: Atom("/").Of(Atom("foo"), 1),
 			want: "foo/1",
 		},
+		{
+			term: coordinate{Functor: "/", X: 6, Y: 9},
+			want: "6/9",
+		},
 	}
 
 	for _, tc := range cases {
@@ -94,4 +98,10 @@ func TestMarshal(t *testing.T) {
 			}
 		})
 	}
+}
+
+// compound of X/Y
+type coordinate struct {
+	Functor `prolog:"//2"`
+	X, Y    int
 }

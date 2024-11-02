@@ -8,6 +8,23 @@ import (
 )
 
 func TestScan(t *testing.T) {
+	type pair struct {
+		Functor `prolog:"-/2"`
+		Key     Term
+		Value   Term
+	}
+	type fieldDef struct {
+		Functor `prolog:"field/5"`
+		Path    Atom
+		Type    Term
+		Options []Term
+		Rules   []pair
+		Cols    []Atom
+	}
+	type complexResult struct {
+		Fields []fieldDef
+	}
+
 	cases := []struct {
 		sub  Substitution
 		want any
@@ -57,6 +74,34 @@ func TestScan(t *testing.T) {
 			sub:  Substitution{"X": "xyzあ"},
 			want: struct{ X []Term }{X: []Term{Atom("x"), Atom("y"), Atom("z"), Atom("あ")}},
 		},
+		// compound → struct
+		{
+			sub: Substitution{"Test": Compound{Functor: "test", Args: []Term{int64(123), Atom("abc"), "hi", "ho"}}},
+			want: struct {
+				Test struct {
+					Functor
+					N int64
+					A Atom
+					L []Atom
+					Z []Term
+				}
+			}{
+				Test: struct {
+					Functor
+					N int64
+					A Atom
+					L []Atom
+					Z []Term
+				}{"test", int64(123), "abc", []Atom{"h", "i"}, []Term{Atom("h"), Atom("o")}}},
+		},
+		{
+			sub: Substitution{"Fields": []Term{
+				Compound{Functor: "field", Args: []Term{Atom("hello"), Atom("list").Of(Atom("string")), Atom("[]"), []Term{Atom("-").Of(Atom("foo"), Atom("bar"))}, "abc"}},
+			}},
+			want: complexResult{Fields: []fieldDef{
+				{Functor: "field", Path: Atom("hello"), Type: Atom("list").Of(Atom("string")), Options: []Term{}, Rules: []pair{{"-", Atom("foo"), Atom("bar")}}, Cols: []Atom{Atom("a"), Atom("b"), Atom("c")}},
+			}},
+		},
 	}
 
 	for _, tc := range cases {
@@ -66,7 +111,7 @@ func TestScan(t *testing.T) {
 				t.Fatal(err)
 			}
 			if !reflect.DeepEqual(tc.want, got) {
-				t.Errorf("bad scan result. want: %#v, got: %#v", tc.want, got)
+				t.Errorf("bad scan result.\nwant: %#v\n got: %#v", tc.want, got)
 			}
 		})
 	}

@@ -111,6 +111,31 @@ fmt.Printf("%+v", result)
 // Output: {X:123 Y:abc Hi:[hello world]}
 ```
 
+#### Struct compounds
+
+Prolog compounds can destructure into Go structs. A special field of type `trealla.Functor` will be set to the functor.
+The compound's arguments are matched with the exported struct fields in order.
+These structs can also be used to bind variables in queries.
+
+```prolog
+?- findall(kv(Flag, Value), current_prolog_flag(Flag, Value), Flags).
+   Flags = [kv(double_quotes,chars),kv(char_conversion,off),kv(occurs_check,false),kv(character_escapes,true),...]
+```
+
+```go
+// kv(Flag, Value)
+type KV struct {
+	trealla.Functor `prolog:"kv/2"` // tag is optional, but can be used to specify the functor/arity
+	Flag  trealla.Atom // 1st arg
+	Value trealla.Term // 2nd arg
+}
+
+var result struct {
+	Flags []KV // Flags variable
+}
+answer.Solution.Scan(&result)
+```
+
 ## Documentation
 
 See **[package trealla's documentation](https://pkg.go.dev/github.com/trealla-prolog/go#section-directories)** for more details and examples.

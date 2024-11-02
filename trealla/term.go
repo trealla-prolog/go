@@ -157,6 +157,21 @@ type Variable struct {
 	Attr []Term
 }
 
+// Functor is a special type that represents the functor of a compound struct.
+// For example, hello/1 as in `hello(world)` could be represented as:
+//
+//	type Hello struct {
+//		trealla.Functor
+//		Planet trealla.Atom
+//	}
+type Functor Atom
+
+func (f Functor) functor() Functor { return f }
+
+type compoundStruct interface {
+	functor() Functor
+}
+
 // String returns the Prolog text representation of this variable.
 func (v Variable) String() string {
 	if len(v.Attr) == 0 {
@@ -313,6 +328,12 @@ func marshal(term Term) (string, error) {
 		return x.String(), nil
 	case Variable:
 		return x.String(), nil
+	case compoundStruct:
+		c, err := encodeCompoundStruct(term)
+		if err != nil {
+			return "", fmt.Errorf("trealla: error marshaling term %#v: %w", term, err)
+		}
+		return c.String(), nil
 	case []Term:
 		return marshalSlice(x)
 	case []any:
