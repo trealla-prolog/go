@@ -123,17 +123,34 @@ These structs can also be used to bind variables in queries.
 ```
 
 ```go
+// You can embed trealla.Functor to represent Prolog compounds using Go structs.
+
 // kv(Flag, Value)
-type KV struct {
-	trealla.Functor `prolog:"kv/2"` // tag is optional, but can be used to specify the functor/arity
-	Flag  trealla.Atom // 1st arg
-	Value trealla.Term // 2nd arg
+type pair struct {
+	trealla.Functor `prolog:"-/2"` // tag is optional, but can be used to specify the functor/arity
+	Flag            trealla.Atom   // 1st arg
+	Value           trealla.Term   // 2nd arg
+}
+var result struct {
+	Flags []pair // Flags variable
 }
 
-var result struct {
-	Flags []KV // Flags variable
+ctx := context.Background()
+pl, err := trealla.New()
+if err != nil {
+	panic(err)
 }
-answer.Solution.Scan(&result)
+answer, err := pl.QueryOnce(ctx, `
+	findall(Flag-Value, (member(Flag, [double_quotes, encoding, max_arity]), current_prolog_flag(Flag, Value)), Flags).
+`)
+if err != nil {
+	panic(err)
+}
+if err := answer.Solution.Scan(&result); err != nil {
+	panic(err)
+}
+fmt.Printf("%v\n", result.Flags)
+// Output: [{- double_quotes chars} {- encoding 'UTF-8'} {- max_arity 255}]
 ```
 
 ## Documentation
