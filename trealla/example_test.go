@@ -19,7 +19,7 @@ func Example() {
 	}
 
 	// start a new query
-	query := pl.Query(ctx, "member(X, [1, foo(bar), c]).")
+	query := pl.Query(ctx, "use_module(library(lists)), member(X, [1, foo(bar), c]).")
 	// calling Close is not necessary if you iterate through the whole query, but it doesn't hurt
 	defer query.Close()
 

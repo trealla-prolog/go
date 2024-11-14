@@ -511,7 +511,7 @@ func (q *query) Err() error {
 
 func escapeQuery(query string) string {
 	query = queryEscaper.Replace(query)
-	return fmt.Sprintf(`js_ask(%s).`, escapeString(query))
+	return fmt.Sprintf(`wasm:js_ask(%s).`, escapeString(query))
 }
 
 // QueryOption is an optional parameter for queries.

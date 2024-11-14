@@ -52,7 +52,7 @@ func (pl *prolog) register(ctx context.Context, name string, arity int, proc Pre
 	pl.procs[pi.String()] = proc
 	vars := numbervars(arity)
 	head := functor.Of(vars...)
-	body := Atom("host_rpc").Of(head)
+	body := Atom(":").Of(Atom("wasm_generic"), Atom("host_rpc").Of(head))
 	clause := fmt.Sprintf(`%s :- %s.`, head.String(), body.String())
 	return pl.consultText(ctx, "user", clause)
 }

@@ -53,9 +53,11 @@ type prolog struct {
 	spawning map[uint32]*query
 	limiter  chan struct{}
 
-	ptr              uint32
-	realloc          wasmFunc
-	free             wasmFunc
+	ptr uint32
+	// from stdlib
+	realloc wasmFunc
+	free    wasmFunc
+	// from trealla.h
 	pl_consult       wasmFunc
 	pl_capture       wasmFunc
 	pl_capture_read  wasmFunc
@@ -63,6 +65,7 @@ type prolog struct {
 	pl_query         wasmFunc
 	pl_redo          wasmFunc
 	pl_done          wasmFunc
+	pl_error         wasmFunc
 
 	procs map[string]Predicate
 	coros map[int64]coroutine
@@ -104,7 +107,7 @@ func New(opts ...Option) (Prolog, error) {
 }
 
 func (pl *prolog) argv() []string {
-	args := []string{"tpl", "-g", "halt", "--ns"}
+	args := []string{"tpl", "--ns"}
 	if pl.library != "" {
 		args = append(args, "--library", pl.library)
 	}
@@ -130,6 +133,7 @@ func (pl *prolog) init(parent *prolog) error {
 	cfg := wazero.NewModuleConfig().WithName("").WithArgs(argv...).WithFSConfig(fs).
 		WithSysWalltime().WithSysNanotime().WithSysNanosleep().
 		WithOsyield(runtime.Gosched).
+		// WithStdout(os.Stdout).WithStderr(os.Stderr). // for debugging output capture
 		WithRandSource(rand.Reader)
 
 	// run once to initialize global interpreter
@@ -186,6 +190,11 @@ func (pl *prolog) init(parent *prolog) error {
 	}
 
 	pl.pl_done, err = pl.function("pl_done")
+	if err != nil {
+		return err
+	}
+
+	pl.pl_error, err = pl.function("pl_error")
 	if err != nil {
 		return err
 	}
