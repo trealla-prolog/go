@@ -311,6 +311,24 @@ func TestThrow(t *testing.T) {
 	}
 }
 
+// func TestInterpError(t *testing.T) {
+// 	pl, err := trealla.New()
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+
+// 	ctx := context.Background()
+// 	q := pl.Query(ctx, `abort.`)
+// 	if q.Next(ctx) {
+// 		t.Error("unexpected result", q.Current())
+// 	}
+// 	err = q.Err()
+// 	t.Fatal(err)
+// 	if err == nil {
+// 		t.Fatal("expected error")
+// 	}
+// }
+
 func TestPreopen(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("skipping unixy test")

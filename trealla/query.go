@@ -321,6 +321,18 @@ func (q *query) redo(ctx context.Context) bool {
 			return false
 		}
 
+		// var erroring bool
+		// var errcode uint64
+		// {
+		// 	retv, err2 := pl.get_error.Call(ctx, uint64(pl.ptr))
+		// 	if err2 != nil {
+		// 		q.setError(fmt.Errorf("trealla: get_error internal error: %w", err))
+		// 		return false
+		// 	}
+		// 	errcode = retv[0]
+		// 	erroring = errcode != 0
+		// }
+
 		if q.done {
 			delete(pl.running, q.subquery)
 			// defer q.close()
@@ -338,6 +350,24 @@ func (q *query) redo(ctx context.Context) bool {
 		stdout := q.stdout.String()
 		stderr := q.stderr.String()
 		q.resetOutput()
+
+		// if erroring {
+		// 	var msg string
+		// 	if either := cmp.Or(stdout, stderr); either != "" {
+		// 		either = strings.TrimPrefix(either, "\x02")
+		// 		if strings.HasPrefix(either, "Error:") || strings.HasPrefix(either, "Warning:") {
+		// 			nl := strings.IndexByte(either, '\n')
+		// 			if nl > 0 {
+		// 				msg = either[:nl]
+		// 			}
+		// 		}
+		// 	}
+		// 	if msg == "" {
+		// 		msg = fmt.Sprintf("interpreter returned error code %d", errcode)
+		// 	}
+		// 	q.setError(fmt.Errorf("%s", msg))
+		// 	return false
+		// }
 
 		ans, err := pl.parse(q.goal, stdout, stderr)
 		switch {
