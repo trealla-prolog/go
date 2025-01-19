@@ -29,7 +29,10 @@ import "github.com/trealla-prolog/go/trealla"
 
 func main() {
 	// load the interpreter and (optionally) grant access to the current directory
-	pl := trealla.New(trealla.WithPreopen("."))
+	pl, err := trealla.New(trealla.WithPreopenDir("."))
+	if err != nil {
+		panic(err)
+	}
 	// run a query; cancel context to abort it
 	ctx := context.Background()
 	query := pl.Query(ctx, "member(X, [1, foo(bar), c]).")
