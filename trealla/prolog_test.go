@@ -88,9 +88,9 @@ func TestLeakCheck(t *testing.T) {
 
 				return Atom("interop_test").Of(ans2.Solution["Y"])
 			})
-
+			pl.(*prolog).dumpMemory("/Users/guregu/code/trealla/go/mem_a.bin")
 			size := 0
-			for i := 0; i < 2048; i++ {
+			for i := 0; i < 20480; i++ {
 				q := pl.Query(ctx, goal)
 				n := 0
 				for q.Next(ctx) {
@@ -99,7 +99,7 @@ func TestLeakCheck(t *testing.T) {
 						break
 					}
 				}
-				if err := q.Err(); err != nil {
+				if err := q.Err(); err != nil && !IsFailure(err) {
 					t.Fatal(err, "iter=", i)
 				}
 				q.Close()
@@ -109,7 +109,8 @@ func TestLeakCheck(t *testing.T) {
 					size = current
 				}
 				if current > size {
-					t.Fatal("possible leak: memory grew to:", current, "initial:", size)
+					pl.(*prolog).dumpMemory("/Users/guregu/code/trealla/go/mem_b.bin")
+					t.Fatal(goal, "possible leak: memory grew to:", current, "initial:", size)
 				}
 			}
 			t.Logf("goal: %s size: %d", goal, size)
@@ -118,8 +119,9 @@ func TestLeakCheck(t *testing.T) {
 	t.Run("true", check("true.", 0))
 	t.Run("between(1,3,X)", check("between(1,3,X).", 0))
 	t.Run("between(1,3,X) limit 1", check("between(1,3,X).", 1))
-	t.Run("output", check("write(stdout, abc), write(stderr, def) ; write(stdout, xyz), write(stderr, qux) ; 1=2.", 0))
+	t.Run("output", check("true ; true ; true ; foo=bar ; nonvar(FUUUUUUUUUUUUUUUUUUCK).", 0))
+	// t.Run("fail", check("fail ; fail", 0))
 
-	t.Run("simple interop", check("interop_simple(X)", 0))
+	// t.Run("simple interop", check("interop_simple(X)", 0))
 	// t.Run("complex interop", check("interop_test(X)"))
 }

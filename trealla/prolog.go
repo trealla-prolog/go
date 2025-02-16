@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"log"
 	"maps"
+	"os"
 	"runtime"
 	"sync"
 
@@ -62,10 +63,11 @@ type prolog struct {
 	pl_capture       wasmFunc
 	pl_capture_read  wasmFunc
 	pl_capture_reset wasmFunc
+	pl_capture_free  wasmFunc
 	pl_query         wasmFunc
 	pl_redo          wasmFunc
 	pl_done          wasmFunc
-	// get_error        wasmFunc
+	pl_query_status  wasmFunc
 
 	procs map[string]Predicate
 	coros map[int64]coroutine
@@ -179,6 +181,11 @@ func (pl *prolog) init(parent *prolog) error {
 		return err
 	}
 
+	pl.pl_capture_free, err = pl.function("pl_capture_free")
+	if err != nil {
+		return err
+	}
+
 	pl.pl_query, err = pl.function("pl_query")
 	if err != nil {
 		return err
@@ -198,6 +205,11 @@ func (pl *prolog) init(parent *prolog) error {
 	// if err != nil {
 	// 	return err
 	// }
+
+	pl.pl_query_status, err = pl.function("pl_query_status")
+	if err != nil {
+		return err
+	}
 
 	pl.pl_consult, err = pl.function("pl_consult")
 	if err != nil {
@@ -422,6 +434,14 @@ func (pl *prolog) stats() Stats {
 	size, _ := pl.memory.Grow(0)
 	return Stats{
 		MemorySize: int(size) * pageSize,
+	}
+}
+
+func (pl *prolog) dumpMemory(filename string) {
+	pages, _ := pl.memory.Grow(0)
+	buf, _ := pl.memory.Read(0, pages*pageSize)
+	if err := os.WriteFile(filename, buf, 0600); err != nil {
+		panic(err)
 	}
 }
 

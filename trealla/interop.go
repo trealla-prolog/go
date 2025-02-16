@@ -173,12 +173,8 @@ func (pl *lockedProlog) CoroStop(subq Subquery, id int64) {
 
 func hostCall(ctx context.Context, subquery, msgptr, msgsize, reply_pp, replysize_p uint32) uint32 {
 	// extern int32_t host_call(int32_t subquery, const char *msg, size_t msg_size, char **reply, size_t *reply_size);
-	pl := ctx.Value(prologKey{}).(*prolog)
-
-	subq := pl.subquery(subquery)
-	if subq == nil {
-		panic(fmt.Sprintf("could not find subquery: %d", subquery))
-	}
+	subq := ctx.Value(queryContext{}).(*query)
+	pl := subq.pl
 
 	msgraw, err := pl.gets(msgptr, msgsize)
 	if err != nil {
@@ -243,6 +239,37 @@ func hostCall(ctx context.Context, subquery, msgptr, msgsize, reply_pp, replysiz
 		panic(err)
 	}
 	return wasmTrue
+}
+
+func hostPushAnswer(ctx context.Context, subquery, msgptr, msgsize uint32) {
+	// extern void host_push_answer(int32_t subquery, const char *msg, size_t msg_size);
+	// pl := ctx.Value(prologKey{}).(*prolog)
+	subq := ctx.Value(queryContext{}).(*query)
+	pl := subq.pl
+	if subq == nil {
+		panic(fmt.Sprintf("could not find subquery: %d", subquery))
+	}
+
+	msg, err := pl.gets(msgptr, msgsize)
+	if err != nil {
+		subq.setError(err)
+		return
+	}
+
+	if err := subq.readOutput(); err != nil {
+		subq.setError(err)
+		return
+	}
+	stdout := subq.stdout.String()
+	stderr := subq.stderr.String()
+	subq.resetOutput()
+
+	ans, err := pl.parse(subq.goal, msg, stdout, stderr)
+	if err != nil {
+		subq.setError(err)
+		return
+	}
+	subq.push(ans)
 }
 
 func catch(pred Predicate, pl Prolog, subq Subquery, goal Term) (result Term) {

@@ -14,6 +14,8 @@ import (
 const stx = '\x02' // START OF TEXT
 const etx = '\x03' // END OF TEXT
 
+type queryContext struct{}
+
 // Query is a Prolog query iterator.
 type Query interface {
 	// Next computes the next solution. Returns true if it found one and false if there are no more results.
@@ -41,11 +43,12 @@ type query struct {
 	// in-flight coroutines
 	coros map[int64]struct{}
 
-	cur  Answer
-	next *Answer
-	err  error
-	done bool
-	dead bool
+	cur     Answer
+	answers []Answer
+	err     error
+	done    bool
+	dead    bool
+	iter    int
 
 	// output capture pointers
 	stdoutptr uint32 // char**
@@ -181,6 +184,8 @@ func (pl *prolog) start(ctx context.Context, goal string, options ...QueryOption
 		return q
 	}
 
+	ctx = context.WithValue(ctx, queryContext{}, q)
+
 	if err := q.reify(); err != nil {
 		q.setError(err)
 		return q
@@ -211,68 +216,58 @@ func (pl *prolog) start(ctx context.Context, goal string, options ...QueryOption
 		return q
 	}
 
-	ch := make(chan error, 2)
+	// ch := make(chan error, 2)
 	var ret uint32
-	go func() {
-		defer func() {
-			if ex := recover(); ex != nil {
-				ch <- fmt.Errorf("trealla: panic: %v", ex)
-			}
-		}()
+	v, err := pl.pl_query.Call(ctx, uint64(pl.ptr), uint64(goalstr.ptr), uint64(subqptr), 0)
+	if err == nil {
+		ret = uint32(v[0])
+	}
+	goalstr.free(pl)
+	// go func() {
+	// 	defer func() {
+	// 		if ex := recover(); ex != nil {
+	// 			ch <- fmt.Errorf("trealla: panic: %v", ex)
+	// 		}
+	// 	}()
 
-		v, err := pl.pl_query.Call(pl.ctx, uint64(pl.ptr), uint64(goalstr.ptr), uint64(subqptr), 0)
-		if err == nil {
-			ret = uint32(v[0])
-		}
-		goalstr.free(pl)
-		ch <- err
-	}()
+	// 	v, err := pl.pl_query.Call(pl.ctx, uint64(pl.ptr), uint64(goalstr.ptr), uint64(subqptr), 0)
+	// 	if err == nil {
+	// 		ret = uint32(v[0])
+	// 	}
+	// 	goalstr.free(pl)
+	// 	ch <- err
+	// }()
 
-	select {
-	case <-ctx.Done():
-		q.setError(fmt.Errorf("trealla: canceled: %w", ctx.Err()))
-		return q
+	// select {
+	// case <-ctx.Done():
+	// 	q.setError(fmt.Errorf("trealla: canceled: %w", ctx.Err()))
+	// 	return q
 
-	case err := <-ch:
-		q.done = ret == 0
+	// case err := <-ch:
+	q.done = ret == 0
 
-		if err != nil {
-			q.setError(fmt.Errorf("trealla: query error: %w", err))
-			return q
-		}
-
-		// grab subquery pointer
-		if !q.done {
-			var err error
-			q.subquery = pl.indirect(subqptr)
-			if q.subquery == 0 {
-				q.setError(fmt.Errorf("trealla: couldn't read subquery pointer: %w", err))
-				return q
-			}
-			q.pl.running[q.subquery] = q
-		}
-
-		if err := q.readOutput(); err != nil {
-			q.setError(err)
-			return q
-		}
-
-		if pl.closing {
-			pl.Close()
-		}
-
-		stdout := q.stdout.String()
-		stderr := q.stderr.String()
-		q.resetOutput()
-
-		ans, err := pl.parse(q.goal, stdout, stderr)
-		if err == nil {
-			q.push(ans)
-		} else {
-			q.setError(err)
-		}
+	if err != nil {
+		q.setError(fmt.Errorf("trealla: query error: %w", err))
 		return q
 	}
+
+	// grab subquery pointer
+	if !q.done {
+		var err error
+		q.subquery = pl.indirect(subqptr)
+		if q.subquery == 0 {
+			q.setError(fmt.Errorf("trealla: couldn't read subquery pointer: %w", err))
+			return q
+		}
+		q.pl.running[q.subquery] = q
+	}
+
+	if pl.closing {
+		pl.Close()
+	}
+
+	return q
+	// }
 }
 
 func (q *query) redo(ctx context.Context) bool {
@@ -290,96 +285,85 @@ func (q *query) redo(ctx context.Context) bool {
 	}
 
 	pl := q.pl
+	ctx = context.WithValue(ctx, queryContext{}, q)
 
-	ch := make(chan error, 2)
+	// ch := make(chan error, 2)
 	var ret uint32
-	go func() {
-		defer func() {
-			if ex := recover(); ex != nil {
-				ch <- fmt.Errorf("trealla: panic: %v", ex)
-			}
-		}()
+	// go func() {
+	// 	defer func() {
+	// 		if ex := recover(); ex != nil {
+	// 			ch <- fmt.Errorf("trealla: panic: %v", ex)
+	// 		}
+	// 	}()
 
-		v, err := pl.pl_redo.Call(pl.ctx, uint64(q.subquery))
-		if err == nil {
-			ret = uint32(v[0])
-		}
-		ch <- err
-	}()
+	// 	v, err := pl.pl_redo.Call(pl.ctx, uint64(q.subquery))
+	// 	if err == nil {
+	// 		ret = uint32(v[0])
+	// 	}
+	// 	ch <- err
+	// }()
 
-	select {
-	case <-ctx.Done():
-		q.setError(fmt.Errorf("trealla: canceled: %w", ctx.Err()))
-		q.Close()
-		return false
-
-	case err := <-ch:
-		q.done = ret == 0
-		if err != nil {
-			q.setError(fmt.Errorf("trealla: query error: %w", err))
-			q.Close()
-			return false
-		}
-
-		// var erroring bool
-		// var errcode uint64
-		// {
-		// 	retv, err2 := pl.get_error.Call(ctx, uint64(pl.ptr))
-		// 	if err2 != nil {
-		// 		q.setError(fmt.Errorf("trealla: get_error internal error: %w", err))
-		// 		return false
-		// 	}
-		// 	errcode = retv[0]
-		// 	erroring = errcode != 0
-		// }
-
-		if q.done {
-			delete(pl.running, q.subquery)
-			// defer q.close()
-		}
-
-		if err := q.readOutput(); err != nil {
-			q.setError(err)
-			return false
-		}
-
-		if pl.closing {
-			pl.Close()
-		}
-
-		stdout := q.stdout.String()
-		stderr := q.stderr.String()
-		q.resetOutput()
-
-		// if erroring {
-		// 	var msg string
-		// 	if either := cmp.Or(stdout, stderr); either != "" {
-		// 		either = strings.TrimPrefix(either, "\x02")
-		// 		if strings.HasPrefix(either, "Error:") || strings.HasPrefix(either, "Warning:") {
-		// 			nl := strings.IndexByte(either, '\n')
-		// 			if nl > 0 {
-		// 				msg = either[:nl]
-		// 			}
-		// 		}
-		// 	}
-		// 	if msg == "" {
-		// 		msg = fmt.Sprintf("interpreter returned error code %d", errcode)
-		// 	}
-		// 	q.setError(fmt.Errorf("%s", msg))
-		// 	return false
-		// }
-
-		ans, err := pl.parse(q.goal, stdout, stderr)
-		switch {
-		case IsFailure(err):
-			return false
-		case err != nil:
-			q.setError(err)
-			return false
-		}
-		q.push(ans)
-		return true
+	v, err := pl.pl_redo.Call(ctx, uint64(q.subquery))
+	q.iter++
+	if err == nil {
+		ret = uint32(v[0])
 	}
+
+	// select {
+	// case <-ctx.Done():
+	// 	q.setError(fmt.Errorf("trealla: canceled: %w", ctx.Err()))
+	// 	q.Close()
+	// 	return false
+
+	// case err := <-ch:
+	q.done = ret == 0
+	if err != nil {
+		q.setError(fmt.Errorf("trealla: query error: %w", err))
+		q.close()
+		return false
+	}
+
+	// var erroring bool
+	// var errcode uint64
+	// {
+	// 	retv, err2 := pl.get_error.Call(ctx, uint64(pl.ptr))
+	// 	if err2 != nil {
+	// 		q.setError(fmt.Errorf("trealla: get_error internal error: %w", err))
+	// 		return false
+	// 	}
+	// 	errcode = retv[0]
+	// 	erroring = errcode != 0
+	// }
+
+	var failed bool
+	if !q.done {
+		failedv, err := pl.pl_query_status.Call(ctx, uint64(q.subquery))
+		if err != nil {
+			panic(err)
+		}
+		// fmt.Println("failed:", failedv)
+		failed = failedv[0] == 1
+	}
+	// failed = len(q.answers) == 0 // Test
+	if failed {
+		// q.readOutput()
+		// fmt.Println("faild?", q.iter)
+		q.close()
+	}
+
+	if q.done || failed {
+		delete(pl.running, q.subquery)
+		defer q.close()
+	}
+
+	if pl.closing {
+		pl.Close()
+	}
+
+	if q.err != nil {
+		return false
+	}
+	return true
 }
 
 func (q *query) Next(ctx context.Context) bool {
@@ -399,22 +383,24 @@ func (q *query) Next(ctx context.Context) bool {
 	}
 
 	if q.redo(ctx) {
-		return q.pop()
+		got := q.pop()
+		return got
 	}
 
 	return false
 }
 
 func (q *query) push(a Answer) {
-	q.next = &a
+	q.answers = append(q.answers, a)
 }
 
 func (q *query) pop() bool {
-	if q.next == nil {
+	if len(q.answers) == 0 {
 		return false
 	}
-	q.cur = *q.next
-	q.next = nil
+	a := q.answers[0]
+	q.answers = q.answers[1:]
+	q.cur = a
 	return true
 }
 
@@ -476,6 +462,7 @@ func (q *query) close() error {
 		q.pl.pl_done.Call(q.pl.ctx, uint64(q.subquery))
 		q.done = true
 		q.subquery = 0
+		q.pl.pl_capture_free.Call(q.pl.ctx, uint64(q.pl.ptr))
 	}
 
 	if q.stdoutptr != 0 {
