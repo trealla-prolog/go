@@ -43,6 +43,8 @@ type Prolog interface {
 	Close()
 	// Stats returns diagnostic information.
 	Stats() Stats
+
+	DumpMemory(string)
 }
 
 type prolog struct {
@@ -437,7 +439,7 @@ func (pl *prolog) stats() Stats {
 	}
 }
 
-func (pl *prolog) dumpMemory(filename string) {
+func (pl *prolog) DumpMemory(filename string) {
 	pages, _ := pl.memory.Grow(0)
 	buf, _ := pl.memory.Read(0, pages*pageSize)
 	if err := os.WriteFile(filename, buf, 0600); err != nil {
@@ -455,6 +457,9 @@ type lockedProlog struct {
 func (pl *lockedProlog) kill() {
 	pl.dead = true
 	pl.prolog = nil
+}
+func (pl *lockedProlog) DumpMemory(string) {
+
 }
 
 func (pl *lockedProlog) ensure() error {

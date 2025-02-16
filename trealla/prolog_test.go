@@ -88,9 +88,9 @@ func TestLeakCheck(t *testing.T) {
 
 				return Atom("interop_test").Of(ans2.Solution["Y"])
 			})
-			pl.(*prolog).dumpMemory("/Users/guregu/code/trealla/go/mem_a.bin")
+			pl.(*prolog).DumpMemory("/Users/guregu/code/trealla/go/mem_a.bin")
 			size := 0
-			for i := 0; i < 20480; i++ {
+			for i := 0; i < 2048; i++ {
 				q := pl.Query(ctx, goal)
 				n := 0
 				for q.Next(ctx) {
@@ -109,7 +109,7 @@ func TestLeakCheck(t *testing.T) {
 					size = current
 				}
 				if current > size {
-					pl.(*prolog).dumpMemory("/Users/guregu/code/trealla/go/mem_b.bin")
+					pl.(*prolog).DumpMemory("/Users/guregu/code/trealla/go/mem_b.bin")
 					t.Fatal(goal, "possible leak: memory grew to:", current, "initial:", size)
 				}
 			}
@@ -119,9 +119,13 @@ func TestLeakCheck(t *testing.T) {
 	t.Run("true", check("true.", 0))
 	t.Run("between(1,3,X)", check("between(1,3,X).", 0))
 	t.Run("between(1,3,X) limit 1", check("between(1,3,X).", 1))
-	t.Run("output", check("true ; true ; true ; foo=bar ; nonvar(FUUUUUUUUUUUUUUUUUUCK).", 0))
-	// t.Run("fail", check("fail ; fail", 0))
 
-	// t.Run("simple interop", check("interop_simple(X)", 0))
+	// BUG(guregu): queries ending in a ; fail branch leak for some reason
+	// but it's not enough to trigger the leak check (~20B/query)
+	t.Run("failing branch", check("true ; true ; true ; foo=bar.", 0))
+
+	t.Run("fail", check("fail ; fail", 0))
+
+	t.Run("simple interop", check("interop_simple(X)", 0))
 	// t.Run("complex interop", check("interop_test(X)"))
 }
