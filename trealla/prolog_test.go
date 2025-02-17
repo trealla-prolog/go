@@ -121,6 +121,7 @@ func TestLeakCheck(t *testing.T) {
 
 	// BUG(guregu): this leaks if the last branch fails, not sure why
 	// t.Run("output", check("write(stdout, abc), write(stderr, def) ; write(stdout, xyz), write(stderr, qux) ; 1=2.", 0))
+	t.Run("output", check("write(stdout, abc), write(stderr, def) ; write(stdout, xyz), write(stderr, qux).", 0))
 
 	t.Run("simple interop", check("interop_simple(X)", 0))
 	// t.Run("complex interop", check("interop_test(X)"))
