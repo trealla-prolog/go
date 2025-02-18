@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"log"
 	"maps"
+	"os"
 	"runtime"
 	"sync"
 
@@ -42,6 +43,8 @@ type Prolog interface {
 	Close()
 	// Stats returns diagnostic information.
 	Stats() Stats
+
+	DumpMemory(string)
 }
 
 type prolog struct {
@@ -62,10 +65,10 @@ type prolog struct {
 	pl_capture       wasmFunc
 	pl_capture_read  wasmFunc
 	pl_capture_reset wasmFunc
+	pl_capture_free  wasmFunc
 	pl_query         wasmFunc
 	pl_redo          wasmFunc
 	pl_done          wasmFunc
-	// get_error        wasmFunc
 
 	procs map[string]Predicate
 	coros map[int64]coroutine
@@ -175,6 +178,11 @@ func (pl *prolog) init(parent *prolog) error {
 	}
 
 	pl.pl_capture_reset, err = pl.function("pl_capture_reset")
+	if err != nil {
+		return err
+	}
+
+	pl.pl_capture_free, err = pl.function("pl_capture_free")
 	if err != nil {
 		return err
 	}
@@ -425,6 +433,14 @@ func (pl *prolog) stats() Stats {
 	}
 }
 
+func (pl *prolog) DumpMemory(filename string) {
+	pages, _ := pl.memory.Grow(0)
+	buf, _ := pl.memory.Read(0, pages*pageSize)
+	if err := os.WriteFile(filename, buf, 0600); err != nil {
+		panic(err)
+	}
+}
+
 // lockedProlog skips the locking the normal *prolog does.
 // It's only valid during a single RPC call.
 type lockedProlog struct {
@@ -435,6 +451,9 @@ type lockedProlog struct {
 func (pl *lockedProlog) kill() {
 	pl.dead = true
 	pl.prolog = nil
+}
+func (pl *lockedProlog) DumpMemory(string) {
+
 }
 
 func (pl *lockedProlog) ensure() error {

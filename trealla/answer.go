@@ -25,50 +25,33 @@ type response struct {
 	Error  json.RawMessage // ball
 }
 
-func (pl *prolog) parse(goal, stdout, stderr string) (Answer, error) {
+func (pl *prolog) parse(goal, answer, stdout, stderr string) (Answer, error) {
 	// log.Println("parse:", goal, "stdout:", stdout, "stderr:", stderr)
-	if len(strings.TrimSpace(stdout)) == 0 {
-		return Answer{}, ErrFailure{Query: goal, Stderr: stderr}
+	if len(strings.TrimSpace(answer)) == 0 {
+		return Answer{}, fmt.Errorf("empty answer")
 	}
-
-	start := strings.IndexRune(stdout, stx)
-	end := strings.IndexRune(stdout, etx)
-	if end == -1 {
-		return Answer{}, fmt.Errorf("trealla: invalid query: %s", stdout)
-	}
-	nl := strings.IndexRune(stdout[end+1:], '\n') + end + 1
-	butt := len(stdout)
-	if nl >= 0 {
-		butt = nl
-	}
-
-	// fmt.Println("OUTPUT:", stdout)
-
-	output := stdout[start+1 : end]
-	js := stdout[end+1 : butt]
-
 	if pl.stdout != nil {
-		pl.stdout.Println(output)
+		pl.stdout.Println(stdout)
 	}
 	if pl.stderr != nil {
 		pl.stderr.Println(stderr)
 	}
 	if pl.debug != nil {
-		pl.debug.Println(string(js))
+		pl.debug.Println(string(answer))
 	}
 
 	resp := response{
 		Answer: Answer{
 			Query:  goal,
-			Stdout: output,
+			Stdout: stdout,
 			Stderr: stderr,
 		},
 	}
 
-	dec := json.NewDecoder(strings.NewReader(js))
+	dec := json.NewDecoder(strings.NewReader(answer))
 	dec.UseNumber()
 	if err := dec.Decode(&resp); err != nil {
-		return resp.Answer, fmt.Errorf("trealla: decoding error: %w (resp = %s)", err, string(js))
+		return resp.Answer, fmt.Errorf("trealla: decoding error: %w (resp = %s)", err, string(answer))
 	}
 
 	// spew.Dump(resp)
@@ -77,13 +60,13 @@ func (pl *prolog) parse(goal, stdout, stderr string) (Answer, error) {
 	case statusSuccess:
 		return resp.Answer, nil
 	case statusFailure:
-		return resp.Answer, ErrFailure{Query: goal, Stdout: output, Stderr: stderr}
+		return resp.Answer, ErrFailure{Query: goal, Stdout: stdout, Stderr: stderr}
 	case statusError:
 		ball, err := unmarshalTerm(resp.Error)
 		if err != nil {
 			return resp.Answer, err
 		}
-		return resp.Answer, ErrThrow{Query: goal, Ball: ball, Stdout: output, Stderr: stderr}
+		return resp.Answer, ErrThrow{Query: goal, Ball: ball, Stdout: stdout, Stderr: stderr}
 	default:
 		return resp.Answer, fmt.Errorf("trealla: unexpected query status: %v", resp.Status)
 	}

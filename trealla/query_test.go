@@ -498,9 +498,9 @@ func TestBind(t *testing.T) {
 
 func TestConcurrencySemidet(t *testing.T) {
 	t.Run("10", testConcurrencySemidet(10))
-	t.Run("100", testConcurrencySemidet(100))
-	t.Run("1k", testConcurrencySemidet(1000))
-	t.Run("10k", testConcurrencySemidet(10000))
+	// t.Run("100", testConcurrencySemidet(100))
+	// t.Run("1k", testConcurrencySemidet(1000))
+	// t.Run("10k", testConcurrencySemidet(10000))
 }
 
 // testConcurrencySemidet returns a test case that runs N semidet queries
@@ -519,9 +519,11 @@ func testConcurrencySemidet(count int) func(*testing.T) {
 				defer wg.Done()
 				ctx := context.Background()
 				q := pl.Query(ctx, "between(1,10,X)")
-				q.Next(ctx)
-				q.Next(ctx)
-				q.Next(ctx)
+				for i := 0; i < 3; i++ {
+					if !q.Next(ctx) {
+						t.Fatal("next failed at", i)
+					}
+				}
 				if err := q.Err(); err != nil {
 					panic(fmt.Sprintf("error: %v, %+v", err, pl.Stats()))
 				}

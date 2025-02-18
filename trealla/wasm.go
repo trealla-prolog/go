@@ -25,6 +25,7 @@ func init() {
 	_, err := wasmEngine.NewHostModuleBuilder("trealla").
 		NewFunctionBuilder().WithFunc(hostCall).Export("host-call").
 		NewFunctionBuilder().WithFunc(hostResume).Export("host-resume").
+		NewFunctionBuilder().WithFunc(hostPushAnswer).Export("host-push-answer").
 		Instantiate(ctx)
 	if err != nil {
 		panic(err)
