@@ -335,23 +335,7 @@ func (q *query) redo(ctx context.Context) bool {
 	// 	erroring = errcode != 0
 	// }
 
-	var failed bool
-	if !q.done {
-		failedv, err := pl.pl_query_status.Call(ctx, uint64(q.subquery))
-		if err != nil {
-			panic(err)
-		}
-		// fmt.Println("failed:", failedv)
-		failed = failedv[0] == 1
-	}
-	// failed = len(q.answers) == 0 // Test
-	if failed {
-		// q.readOutput()
-		// fmt.Println("faild?", q.iter)
-		q.close()
-	}
-
-	if q.done || failed {
+	if q.done {
 		delete(pl.running, q.subquery)
 		defer q.close()
 	}

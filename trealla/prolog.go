@@ -69,7 +69,6 @@ type prolog struct {
 	pl_query         wasmFunc
 	pl_redo          wasmFunc
 	pl_done          wasmFunc
-	pl_query_status  wasmFunc
 
 	procs map[string]Predicate
 	coros map[int64]coroutine
@@ -207,11 +206,6 @@ func (pl *prolog) init(parent *prolog) error {
 	// if err != nil {
 	// 	return err
 	// }
-
-	pl.pl_query_status, err = pl.function("pl_query_status")
-	if err != nil {
-		return err
-	}
 
 	pl.pl_consult, err = pl.function("pl_consult")
 	if err != nil {
