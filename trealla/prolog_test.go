@@ -88,7 +88,6 @@ func TestLeakCheck(t *testing.T) {
 
 				return Atom("interop_test").Of(ans2.Solution["Y"])
 			})
-			pl.(*prolog).DumpMemory("/Users/guregu/code/trealla/go/mem_a.bin")
 			size := 0
 			for i := 0; i < 2048; i++ {
 				q := pl.Query(ctx, goal)
@@ -109,7 +108,6 @@ func TestLeakCheck(t *testing.T) {
 					size = current
 				}
 				if current > size {
-					pl.(*prolog).DumpMemory("/Users/guregu/code/trealla/go/mem_b.bin")
 					t.Fatal(goal, "possible leak: memory grew to:", current, "initial:", size)
 				}
 			}
