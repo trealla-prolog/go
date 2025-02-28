@@ -56,7 +56,7 @@ func ExampleWithBind() {
 	// Output: hello world
 }
 
-func Example_Functor() {
+func ExampleFunctor() {
 	// You can embed trealla.Functor to represent Prolog compounds using Go structs.
 
 	// kv(Flag, Value)
@@ -87,7 +87,7 @@ func Example_Functor() {
 	// Output: [{- double_quotes chars} {- encoding 'UTF-8'} {- max_arity 255}]
 }
 
-func Example_register() {
+func ExampleProlog_Register() {
 	ctx := context.Background()
 	pl, err := trealla.New()
 	if err != nil {
@@ -142,7 +142,7 @@ func Example_register() {
 	// Output: NBSWY3DP
 }
 
-func Example_register_nondet() {
+func ExampleProlog_RegisterNondet() {
 	ctx := context.Background()
 	pl, err := trealla.New()
 	if err != nil {
