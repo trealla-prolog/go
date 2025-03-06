@@ -31,6 +31,10 @@ func marshal(term Term) (string, error) {
 		return strconv.FormatFloat(float64(x), 'f', -1, 32), nil
 	case *big.Int:
 		return x.String(), nil
+	case *big.Rat:
+		n := x.Num().String()
+		d := x.Denom().String()
+		return n + " rdiv " + d, nil
 	case Atom:
 		return x.String(), nil
 	case Compound:

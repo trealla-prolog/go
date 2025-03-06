@@ -62,6 +62,10 @@ func TestMarshal(t *testing.T) {
 			want: "9999999999999999",
 		},
 		{
+			term: big.NewRat(1, 3),
+			want: "1 rdiv 3",
+		},
+		{
 			term: Variable{Name: "X", Attr: []Term{Compound{Functor: ":", Args: []Term{Atom("dif"), Compound{Functor: "dif", Args: []Term{Variable{Name: "X"}, Variable{Name: "Y"}}}}}}},
 			want: "dif:dif(X, Y)",
 		},

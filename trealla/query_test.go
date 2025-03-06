@@ -494,6 +494,19 @@ func TestBind(t *testing.T) {
 			t.Error("unexpected value. want:", want, "got:", x)
 		}
 	})
+
+	t.Run("rationals", func(t *testing.T) {
+		ans, err := pl.QueryOnce(ctx, `A is 1 rdiv 3, B is 9999999999999999 rdiv 2, C is 1 rdiv 9999999999999999.`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := trealla.Substitution{"A": big.NewRat(1, 3), "B": big.NewRat(9999999999999999, 2), "C": big.NewRat(1, 9999999999999999)}
+		for k, v := range ans.Solution {
+			if v.(*big.Rat).Cmp(want[k].(*big.Rat)) != 0 {
+				t.Error("bad", k, "want:", want[k], "got:", v)
+			}
+		}
+	})
 }
 
 func TestConcurrencySemidet(t *testing.T) {

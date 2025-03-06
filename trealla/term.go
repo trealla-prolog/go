@@ -3,6 +3,7 @@ package trealla
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"strconv"
@@ -17,6 +18,7 @@ import (
 //   - int64
 //   - float64
 //   - *big.Int
+//   - *big.Rat
 //   - Atom
 //   - Compound
 //   - Variable
@@ -151,6 +153,11 @@ type atomicTerm interface {
 	pi() Compound
 }
 
+type Rational[T int64 | *big.Int] struct {
+	Numerator   T
+	Denominator T
+}
+
 // Variable is an unbound Prolog variable.
 type Variable struct {
 	Name string
@@ -244,13 +251,16 @@ func unmarshalTerm(bs []byte) (Term, error) {
 			return nil, err
 		}
 
-		var term struct {
-			Functor Atom
-			Args    []json.RawMessage
-			Var     string
-			Attr    []json.RawMessage
-			Number  string
+		type internalTerm struct {
+			Functor     Atom
+			Args        []json.RawMessage
+			Var         string
+			Attr        []json.RawMessage
+			Number      string
+			Numerator   json.RawMessage
+			Denominator json.RawMessage
 		}
+		var term internalTerm
 		dec = json.NewDecoder(bytes.NewReader(bs))
 		dec.UseNumber()
 		if err := dec.Decode(&term); err != nil {
@@ -263,6 +273,50 @@ func unmarshalTerm(bs []byte) (Term, error) {
 				return nil, fmt.Errorf("trealla: failed to decode number: %s", term.Number)
 			}
 			return n, nil
+		}
+
+		switch {
+		case len(term.Numerator) == 0 && len(term.Denominator) == 0:
+		case len(term.Numerator) == 0 && len(term.Denominator) > 0:
+			return nil, fmt.Errorf("trealla: failed to decode rational, missing numerator: %s", string(bs))
+		case len(term.Numerator) > 0 && len(term.Denominator) == 0:
+			return nil, fmt.Errorf("trealla: failed to decode rational, missing denominator: %s", string(bs))
+		case len(term.Numerator) > 0 && len(term.Denominator) > 0:
+			bigN := term.Numerator[0] == '{'
+			bigD := term.Denominator[0] == '{'
+			if !bigN && !bigD {
+				n, err1 := strconv.ParseInt(string(term.Numerator), 10, 64)
+				d, err2 := strconv.ParseInt(string(term.Denominator), 10, 64)
+				return big.NewRat(n, d), errors.Join(err1, err2)
+			}
+
+			var tmp struct {
+				Number string
+			}
+			var str json.RawMessage
+			if bigN {
+				if err := json.Unmarshal(term.Numerator, &tmp); err != nil {
+					return nil, err
+				}
+				str = []byte(tmp.Number)
+			} else {
+				str = term.Numerator
+			}
+			str = append(str, '/')
+			if bigD {
+				if err := json.Unmarshal(term.Denominator, &tmp); err != nil {
+					return nil, err
+				}
+				str = append(str, []byte(tmp.Number)...)
+			} else {
+				str = append(str, term.Denominator...)
+			}
+
+			rat, ok := new(big.Rat).SetString(string(str))
+			if !ok {
+				return nil, fmt.Errorf("trealla: failed to create rational for %s", string(str))
+			}
+			return rat, nil
 		}
 
 		if term.Var != "" {
