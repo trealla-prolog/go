@@ -256,15 +256,28 @@ func unmarshalTerm(bs []byte) (Term, error) {
 			Args        []json.RawMessage
 			Var         string
 			Attr        []json.RawMessage
-			Number      string
-			Numerator   json.RawMessage
-			Denominator json.RawMessage
+			Number      string // deprecated
+			Int         json.RawMessage
+			Numerator   struct{ Int json.RawMessage }
+			Denominator struct{ Int json.RawMessage }
 		}
 		var term internalTerm
 		dec = json.NewDecoder(bytes.NewReader(bs))
 		dec.UseNumber()
 		if err := dec.Decode(&term); err != nil {
 			return nil, err
+		}
+
+		if len(term.Int) > 0 {
+			if term.Int[0] == '"' {
+				n := new(big.Int)
+				unquoted := string(term.Int[1 : len(term.Int)-1])
+				if _, ok := n.SetString(unquoted, 10); !ok {
+					return nil, fmt.Errorf("trealla: failed to decode number: %s", unquoted)
+				}
+				return n, nil
+			}
+			return strconv.ParseInt(string(term.Int), 10, 64)
 		}
 
 		if term.Number != "" {
@@ -276,40 +289,31 @@ func unmarshalTerm(bs []byte) (Term, error) {
 		}
 
 		switch {
-		case len(term.Numerator) == 0 && len(term.Denominator) == 0:
-		case len(term.Numerator) == 0 && len(term.Denominator) > 0:
+		case len(term.Numerator.Int) == 0 && len(term.Denominator.Int) == 0:
+		case len(term.Numerator.Int) == 0 && len(term.Denominator.Int) > 0:
 			return nil, fmt.Errorf("trealla: failed to decode rational, missing numerator: %s", string(bs))
-		case len(term.Numerator) > 0 && len(term.Denominator) == 0:
+		case len(term.Numerator.Int) > 0 && len(term.Denominator.Int) == 0:
 			return nil, fmt.Errorf("trealla: failed to decode rational, missing denominator: %s", string(bs))
-		case len(term.Numerator) > 0 && len(term.Denominator) > 0:
-			bigN := term.Numerator[0] == '{'
-			bigD := term.Denominator[0] == '{'
+		case len(term.Numerator.Int) > 0 && len(term.Denominator.Int) > 0:
+			bigN := term.Numerator.Int[0] == '"'
+			bigD := term.Denominator.Int[0] == '"'
 			if !bigN && !bigD {
-				n, err1 := strconv.ParseInt(string(term.Numerator), 10, 64)
-				d, err2 := strconv.ParseInt(string(term.Denominator), 10, 64)
+				n, err1 := strconv.ParseInt(string(term.Numerator.Int), 10, 64)
+				d, err2 := strconv.ParseInt(string(term.Denominator.Int), 10, 64)
 				return big.NewRat(n, d), errors.Join(err1, err2)
 			}
 
-			var tmp struct {
-				Number string
-			}
-			var str json.RawMessage
+			var str []byte
 			if bigN {
-				if err := json.Unmarshal(term.Numerator, &tmp); err != nil {
-					return nil, err
-				}
-				str = []byte(tmp.Number)
+				str = term.Numerator.Int[1 : len(term.Numerator.Int)-1]
 			} else {
-				str = term.Numerator
+				str = term.Numerator.Int
 			}
 			str = append(str, '/')
 			if bigD {
-				if err := json.Unmarshal(term.Denominator, &tmp); err != nil {
-					return nil, err
-				}
-				str = append(str, []byte(tmp.Number)...)
+				str = append(str, term.Denominator.Int[1:len(term.Denominator.Int)-1]...)
 			} else {
-				str = append(str, term.Denominator...)
+				str = append(str, term.Denominator.Int...)
 			}
 
 			rat, ok := new(big.Rat).SetString(string(str))
