@@ -352,8 +352,10 @@ func (pl *prolog) Close() {
 	if pl.instance != nil {
 		pl.instance.Close(context.Background())
 	}
-	pl.instance = nil
-	pl.memory = nil
+	// zero everything out to help the GC
+	*pl = prolog{
+		mu: pl.mu,
+	}
 }
 
 func (pl *prolog) ConsultText(ctx context.Context, module, text string) error {
