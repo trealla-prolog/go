@@ -3,6 +3,7 @@
 package trealla
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"fmt"
@@ -58,14 +59,10 @@ type prolog struct {
 	realloc wasmFunc
 	free    wasmFunc
 	// from trealla.h
-	pl_consult       wasmFunc
-	pl_capture       wasmFunc
-	pl_capture_read  wasmFunc
-	pl_capture_reset wasmFunc
-	pl_capture_free  wasmFunc
-	pl_query         wasmFunc
-	pl_redo          wasmFunc
-	pl_done          wasmFunc
+	pl_consult wasmFunc
+	pl_query   wasmFunc
+	pl_redo    wasmFunc
+	pl_done    wasmFunc
 
 	procs map[string]Predicate
 	coros map[int64]coroutine
@@ -78,9 +75,12 @@ type prolog struct {
 	quiet   bool
 	max     int
 
-	stdout *log.Logger
-	stderr *log.Logger
-	debug  *log.Logger
+	stdoutLog *log.Logger
+	stderrLog *log.Logger
+	debug     *log.Logger
+
+	stdout *outputStream
+	stderr *outputStream
 
 	mu *sync.Mutex
 }
@@ -130,10 +130,14 @@ func (pl *prolog) init(parent *prolog) error {
 		fs = fs.WithFSMount(fsys, alias)
 	}
 
+	pl.stdout = &outputStream{}
+	pl.stderr = &outputStream{}
+
 	cfg := wazero.NewModuleConfig().WithName("").WithArgs(argv...).WithFSConfig(fs).
 		WithSysWalltime().WithSysNanotime().WithSysNanosleep().
 		WithOsyield(runtime.Gosched).
 		// WithStdout(os.Stdout).WithStderr(os.Stderr). // for debugging output capture
+		WithStdout(pl.stdout).WithStderr(pl.stderr).
 		WithRandSource(rand.Reader)
 
 	// run once to initialize global interpreter
@@ -160,26 +164,6 @@ func (pl *prolog) init(parent *prolog) error {
 	}
 
 	pl.free, err = pl.function("canonical_abi_free")
-	if err != nil {
-		return err
-	}
-
-	pl.pl_capture, err = pl.function("pl_capture")
-	if err != nil {
-		return err
-	}
-
-	pl.pl_capture_read, err = pl.function("pl_capture_read")
-	if err != nil {
-		return err
-	}
-
-	pl.pl_capture_reset, err = pl.function("pl_capture_reset")
-	if err != nil {
-		return err
-	}
-
-	pl.pl_capture_free, err = pl.function("pl_capture_free")
 	if err != nil {
 		return err
 	}
@@ -266,10 +250,10 @@ func (pl *prolog) init(parent *prolog) error {
 	}
 	pl.ptr = uint32(ptr[0])
 
-	_, err = pl.pl_capture.Call(pl.ctx, uint64(pl.ptr))
-	if err != nil {
-		return err
-	}
+	// _, err = pl.pl_capture.Call(pl.ctx, uint64(pl.ptr))
+	// if err != nil {
+	// 	return err
+	// }
 
 	if err := pl.loadBuiltins(); err != nil {
 		return fmt.Errorf("trealla: failed to load builtins: %w", err)
@@ -525,6 +509,25 @@ func (pl *lockedProlog) Stats() Stats {
 	return pl.prolog.stats()
 }
 
+type outputStream struct {
+	buf *bytes.Buffer
+}
+
+func (str *outputStream) use(buf *bytes.Buffer) {
+	str.buf = buf
+}
+
+func (str *outputStream) done() {
+	str.buf = nil
+}
+
+func (str *outputStream) Write(bs []byte) (int, error) {
+	if str.buf == nil {
+		return len(bs), nil
+	}
+	return str.buf.Write(bs)
+}
+
 // Option is an optional parameter for New.
 type Option func(*prolog)
 
@@ -584,7 +587,7 @@ func WithQuiet() Option {
 // WithStdoutLog sets the standard output logger, writing all stdout input from queries.
 func WithStdoutLog(logger *log.Logger) Option {
 	return func(pl *prolog) {
-		pl.stdout = logger
+		pl.stdoutLog = logger
 	}
 }
 
@@ -592,7 +595,7 @@ func WithStdoutLog(logger *log.Logger) Option {
 // Note that traces are written to stderr.
 func WithStderrLog(logger *log.Logger) Option {
 	return func(pl *prolog) {
-		pl.stderr = logger
+		pl.stderrLog = logger
 	}
 }
 

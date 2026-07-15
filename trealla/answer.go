@@ -30,11 +30,11 @@ func (pl *prolog) parse(goal, answer, stdout, stderr string) (Answer, error) {
 	if len(strings.TrimSpace(answer)) == 0 {
 		return Answer{}, fmt.Errorf("empty answer")
 	}
-	if pl.stdout != nil {
-		pl.stdout.Println(stdout)
+	if pl.stdoutLog != nil {
+		pl.stdoutLog.Println(stdout)
 	}
-	if pl.stderr != nil {
-		pl.stderr.Println(stderr)
+	if pl.stderrLog != nil {
+		pl.stderrLog.Println(stderr)
 	}
 	if pl.debug != nil {
 		pl.debug.Println(string(answer))

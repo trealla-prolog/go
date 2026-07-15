@@ -10,7 +10,7 @@ import (
 )
 
 func TestInterop(t *testing.T) {
-	pl, err := New(WithDebugLog(log.Default()))
+	pl, err := New(WithDebugLog(log.Default()), WithQuiet())
 
 	if err != nil {
 		t.Fatal(err)

@@ -219,11 +219,6 @@ func hostCall(ctx context.Context, subquery, msgptr, msgsize, reply_pp, replysiz
 		return wasmTrue
 	}
 
-	if err := subq.readOutput(); err != nil {
-		panic(err)
-	}
-	// log.Println("SAVING", subq.stderr.String())
-
 	locked := &lockedProlog{prolog: pl}
 	continuation := catch(proc, locked, Subquery(subquery), goal)
 	locked.kill()
@@ -235,9 +230,6 @@ func hostCall(ctx context.Context, subquery, msgptr, msgsize, reply_pp, replysiz
 		panic(err)
 	}
 
-	if err := subq.readOutput(); err != nil {
-		panic(err)
-	}
 	return wasmTrue
 }
 
@@ -256,10 +248,6 @@ func hostPushAnswer(ctx context.Context, subquery, msgptr, msgsize uint32) {
 		return
 	}
 
-	if err := subq.readOutput(); err != nil {
-		subq.setError(err)
-		return
-	}
 	stdout := subq.stdout.String()
 	stderr := subq.stderr.String()
 	subq.resetOutput()

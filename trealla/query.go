@@ -87,73 +87,15 @@ func (pl *prolog) queryOnce(ctx context.Context, goal string, options ...QueryOp
 	return ans, q.Err()
 }
 
-func (q *query) allocCapture() error {
-	pl := q.pl
-	var err error
-	if q.stdoutptr == 0 {
-		q.stdoutptr, err = pl.alloc(ptrSize)
-		if err != nil {
-			return err
-		}
-	}
-	if q.stdoutlen == 0 {
-		q.stdoutlen, err = pl.alloc(ptrSize)
-		if err != nil {
-			return err
-		}
-	}
-	if q.stderrptr == 0 {
-		q.stderrptr, err = pl.alloc(ptrSize)
-		if err != nil {
-			return err
-		}
-	}
-	if q.stderrlen == 0 {
-		q.stderrlen, err = pl.alloc(ptrSize)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (q *query) readOutput() error {
-	pl := q.pl
-	var err error
-
-	if err := q.allocCapture(); err != nil {
-		return err
-	}
-
-	_, err = pl.pl_capture_read.Call(pl.ctx, uint64(pl.ptr),
-		uint64(q.stdoutptr), uint64(q.stdoutlen),
-		uint64(q.stderrptr), uint64(q.stderrlen))
-	if err != nil {
-		return err
-	}
-	defer pl.pl_capture_reset.Call(pl.ctx, uint64(pl.ptr))
-
-	stdoutlen := pl.indirect(q.stdoutlen)
-	stdoutptr := pl.indirect(q.stdoutptr)
-	stderrlen := pl.indirect(q.stderrlen)
-	stderrptr := pl.indirect(q.stderrptr)
-
-	stdout, err := pl.gets(stdoutptr, stdoutlen)
-	if err != nil {
-		return err
-	}
-	q.stdout.WriteString(stdout)
-
-	stderr, err := pl.gets(stderrptr, stderrlen)
-	if err != nil {
-		return err
-	}
-	q.stderr.WriteString(stderr)
-
-	return nil
+func (q *query) captureOutput() {
+	q.pl.stdout.use(q.stdout)
+	q.pl.stderr.use(q.stderr)
 }
 
 func (q *query) resetOutput() {
+	q.pl.stdout.done()
+	q.pl.stderr.done()
+
 	q.stdout.Reset()
 	q.stderr.Reset()
 }
@@ -197,7 +139,7 @@ func (pl *prolog) start(ctx context.Context, goal string, options ...QueryOption
 	}
 
 	if pl.debug != nil {
-		pl.debug.Println("query:", q.goal)
+		pl.debug.Printf("query: %s [stdout: %p, stderr: %p]", q.goal, q.stdout, q.stderr)
 	}
 
 	subqptr, err := pl.alloc(ptrSize)
@@ -211,10 +153,7 @@ func (pl *prolog) start(ctx context.Context, goal string, options ...QueryOption
 	}(subqptr)
 	defer pl.free.Call(pl.ctx, uint64(subqptr), 4, 1)
 
-	if err := q.allocCapture(); err != nil {
-		q.setError(err)
-		return q
-	}
+	q.captureOutput()
 
 	// ch := make(chan error, 2)
 	var ret uint32
@@ -281,7 +220,7 @@ func (q *query) redo(ctx context.Context) bool {
 	}
 
 	if q.pl.debug != nil {
-		q.pl.debug.Println("redo:", q.subquery, q.goal)
+		q.pl.debug.Printf("redo: %v %s [stdout: %p, stderr: %p]", q.subquery, q.goal, q.stdout, q.stderr)
 	}
 
 	pl := q.pl
@@ -302,6 +241,8 @@ func (q *query) redo(ctx context.Context) bool {
 	// 	}
 	// 	ch <- err
 	// }()
+
+	q.captureOutput()
 
 	v, err := pl.pl_redo.Call(ctx, uint64(q.subquery))
 	q.iter++
@@ -446,7 +387,6 @@ func (q *query) close() error {
 		q.pl.pl_done.Call(q.pl.ctx, uint64(q.subquery))
 		q.done = true
 		q.subquery = 0
-		q.pl.pl_capture_free.Call(q.pl.ctx, uint64(q.pl.ptr))
 	}
 
 	if q.stdoutptr != 0 {

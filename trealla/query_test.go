@@ -187,7 +187,7 @@ func TestQuery(t *testing.T) {
 			},
 		},
 		{
-			name: "tak & WithLibraryPath",
+			name: "tak WithLibraryPath",
 			want: []trealla.Answer{
 				{
 					// TODO: flake? need to retry once for 'run' to be found
