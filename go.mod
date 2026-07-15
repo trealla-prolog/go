@@ -1,5 +1,7 @@
 module github.com/trealla-prolog/go
 
-go 1.23.0
+go 1.25.0
 
-require github.com/tetratelabs/wazero v1.10.1
+require github.com/tetratelabs/wazero v1.12.0
+
+require golang.org/x/sys v0.47.0 // indirect
